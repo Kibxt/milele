@@ -1,0 +1,9 @@
+[2026-06-16 20:41:43] DARAJA B2C CALLBACK: 
+
+---------------------------------------------------
+[2026-06-16 20:43:30] DARAJA B2C CALLBACK: 
+{"Result":{"ResultType":0,"ResultCode":0,"ResultDesc":"The service request is processed successfully.","OriginatorConversationID":"Mock_9579","ConversationID":"AG_1781635408","TransactionID":"UFF909153","ReferenceData":{"ReferenceItem":{"Key":"QueueTimeoutURL","Value":"https:\/\/internalsandbox.safaricom.co.ke\/mpesa\/b2cresults\/v1\/submit"}}}}
+---------------------------------------------------
+[2026-06-17 18:26:03] DARAJA B2C CALLBACK: 
+
+---------------------------------------------------

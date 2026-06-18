@@ -1,0 +1,18 @@
+[2026-06-17 18:39:38] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"eb45-43b3-a3d4-218ee9f921eb26343","CheckoutRequestID":"ws_CO_17062026193929910748278789","ResultCode":1,"ResultDesc":"The balance is insufficient for the transaction."}}}
+---------------------------------------------------
+[2026-06-17 18:41:47] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"eb45-43b3-a3d4-218ee9f921eb26419","CheckoutRequestID":"ws_CO_17062026194139445748278789","ResultCode":1,"ResultDesc":"The balance is insufficient for the transaction."}}}
+---------------------------------------------------
+[2026-06-17 18:55:40] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"54a8-432e-b302-cf1d90c609dd73970","CheckoutRequestID":"ws_CO_17062026195528176748278789","ResultCode":0,"ResultDesc":"The service request is processed successfully.","CallbackMetadata":{"Item":[{"Name":"Amount","Value":1.00},{"Name":"MpesaReceiptNumber","Value":"UFHJ08J7QO"},{"Name":"Balance","Value":0.00},{"Name":"TransactionDate","Value":20260617195539},{"Name":"PhoneNumber","Value":254748278789}]}}}}
+---------------------------------------------------
+[2026-06-17 18:59:59] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"eb45-43b3-a3d4-218ee9f921eb26847","CheckoutRequestID":"ws_CO_17062026195939251748278789","ResultCode":1032,"ResultDesc":"Request Cancelled by user."}}}
+---------------------------------------------------
+[2026-06-17 19:05:46] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"54a8-432e-b302-cf1d90c609dd74337","CheckoutRequestID":"ws_CO_17062026200534598748278789","ResultCode":0,"ResultDesc":"The service request is processed successfully.","CallbackMetadata":{"Item":[{"Name":"Amount","Value":1.00},{"Name":"MpesaReceiptNumber","Value":"UFHJ08JFZB"},{"Name":"Balance","Value":0.00},{"Name":"TransactionDate","Value":20260617200546},{"Name":"PhoneNumber","Value":254748278789}]}}}}
+---------------------------------------------------
+[2026-06-17 20:07:06] DARAJA STK CALLBACK WEBHOOK RECORD: 
+{"Body":{"stkCallback":{"MerchantRequestID":"eb45-43b3-a3d4-218ee9f921eb28980","CheckoutRequestID":"ws_CO_17062026210654196748278789","ResultCode":0,"ResultDesc":"The service request is processed successfully.","CallbackMetadata":{"Item":[{"Name":"Amount","Value":1.00},{"Name":"MpesaReceiptNumber","Value":"UFHJ08JIYA"},{"Name":"Balance","Value":0.00},{"Name":"TransactionDate","Value":20260617210706},{"Name":"PhoneNumber","Value":254748278789}]}}}}
+---------------------------------------------------

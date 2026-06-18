@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MILELE — Student Escrow Portal</title>
+<style>
+/* ── PALETTE & TYPOGRAPHY ──────────────────────────────────────────── */
+:root {
+    --night: #060B18;
+    --surface-1: #0C1220;
+    --surface-2: #111827;
+    --surface-3: #192034;
+    --glass: rgba(255,255,255,0.04);
+    --glass-2: rgba(255,255,255,0.07);
+    --border-0: rgba(255,255,255,0.05);
+    --border-1: rgba(255,255,255,0.10);
+    --border-2: rgba(255,255,255,0.20);
+    
+    --gold: #C9A84C;
+    --gold-2: #E8C97A;
+    --gold-glow: rgba(201,168,76,0.08);
+    --gold-border: rgba(201,168,76,0.28);
+    
+    --teal: #2DD4BF;
+    --teal-dim: rgba(45,212,191,0.12);
+    --teal-glow: rgba(45,212,191,0.06);
+    
+    --white: #EEF0F5;
+    --muted: #5A6070;
+    --dim: #252D3D;
+    --success: #4ADE80;
+    --warning: #FBBF24;
+    --error: #F87171;
+    
+    --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--night); color: var(--white); height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; display: flex; }
+input, button { font-family: inherit; }
+.t-mono { font-family: var(--mono); }
+.t-data { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ── PRELOADER ──────────────────────────────────────────── */
+#preloader { position: fixed; inset: 0; background: var(--night); z-index: 9999; display: flex; justify-content: center; align-items: center; transition: opacity 0.6s ease; }
+.pl-track { width: 160px; height: 1px; background: var(--border-1); position: relative; overflow: hidden; }
+.pl-fill { position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: var(--gold); transform-origin: left; transform: scaleX(0); transition: transform 1.4s cubic-bezier(0.76,0,0.24,1); }
+
+/* ── CUSTOM CURSOR ──────────────────────────────────────────── */
+#cursor { position: fixed; top: 0; left: 0; width: 20px; height: 20px; border: 1px solid var(--gold-border); border-radius: 50%; pointer-events: none; z-index: 10000; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; transition: background 0.3s, border-color 0.3s; will-change: transform; }
+#cursor::after { content: ''; width: 4px; height: 4px; background: var(--gold); border-radius: 50%; transition: background 0.3s; }
+#cursor.hovered { background: var(--teal-glow); border-color: var(--teal); }
+#cursor.hovered::after { background: var(--teal); }
+
+/* ── LAYOUT ──────────────────────────────────────────── */
+.split-canvas { display: flex; width: 100%; height: 100%; }
+.left-panel { flex: 0 0 58%; position: relative; overflow: hidden; background: linear-gradient(180deg, #060B18 0%, #0A1428 40%, #0D1A35 70%, #0A1220 100%); }
+.right-panel { flex: 0 0 42%; display: flex; justify-content: center; align-items: center; position: relative; z-index: 10; background: var(--night); }
+
+/* ── LEFT PANEL: CAMPUS CSS ART ──────────────────────────────────────────── */
+.sky-layer, .skyline-layer, .ground-layer, .ui-layer { position: absolute; inset: 0; pointer-events: none; }
+
+/* Sky & Atmosphere */
+.moon { position: absolute; top: 15%; right: 25%; width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #F5E8C8, var(--gold)); box-shadow: 0 0 40px rgba(201,168,76,0.3), 0 0 100px rgba(201,168,76,0.1); animation: moonBreathe 8s infinite alternate ease-in-out; }
+@keyframes moonBreathe { from { transform: scale(1); box-shadow: 0 0 40px rgba(201,168,76,0.3), 0 0 100px rgba(201,168,76,0.1); } to { transform: scale(1.02); box-shadow: 0 0 50px rgba(201,168,76,0.4), 0 0 120px rgba(201,168,76,0.15); } }
+.moon-halo { position: absolute; top: 15%; right: 25%; width: 200px; height: 200px; transform: translate(28%, -28%); border-radius: 50%; background: rgba(201,168,76,0.06); filter: blur(60px); }
+.aurora { position: absolute; top: 30%; left: 0; width: 100%; height: 150px; background: rgba(45,212,191,0.04); filter: blur(50px); animation: auroraBreathe 12s infinite alternate ease-in-out; }
+@keyframes auroraBreathe { from { opacity: 0.4; } to { opacity: 0.8; } }
+.stars { position: absolute; inset: 0; background-image: radial-gradient(1px 1px at 10% 20%, #fff 100%, transparent), radial-gradient(2px 2px at 40% 15%, var(--gold) 100%, transparent), radial-gradient(1px 1px at 70% 30%, #fff 100%, transparent), radial-gradient(1.5px 1.5px at 85% 10%, #fff 100%, transparent), radial-gradient(1px 1px at 20% 50%, #fff 100%, transparent), radial-gradient(2px 2px at 60% 45%, var(--gold) 100%, transparent); background-size: 100% 100%; opacity: 0.6; }
+.star-twinkle { position: absolute; top: 25%; left: 30%; width: 2px; height: 2px; background: #fff; border-radius: 50%; animation: twinkle 4s infinite ease-in-out; }
+@keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+
+/* Skyline */
+.skyline-layer { bottom: 20%; top: auto; height: 50%; display: flex; align-items: flex-end; justify-content: center; gap: 10px; }
+.bldg { background: #070D1C; position: relative; border-top: 1px solid rgba(255,255,255,0.05); }
+.bldg-windows { position: absolute; inset: 4px; background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 10px, rgba(255,200,80,0.15) 10px, rgba(255,200,80,0.15) 20px), repeating-linear-gradient(to right, transparent 0, transparent 14px, rgba(200,220,255,0.1) 14px, rgba(200,220,255,0.1) 24px); }
+.bldg-1 { width: 100px; height: 140px; }
+.bldg-2 { width: 80px; height: 100px; margin-right: 40px; }
+.tower-wing { width: 32px; height: 120px; background: #060B18; border-top: 1px solid var(--border-1); }
+.tower-main { width: 90px; height: 220px; background: #050914; border-top: 3px solid rgba(201,168,76,0.4); position: relative; display: flex; justify-content: center; z-index: 2; }
+.tower-main::before { content: ''; position: absolute; top: -15px; width: 0; height: 0; border-left: 45px solid transparent; border-right: 45px solid transparent; border-bottom: 15px solid rgba(201,168,76,0.5); }
+.tower-windows { position: absolute; top: 10px; width: 60px; height: 180px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.win { background: rgba(200,220,255,0.05); border-radius: 2px 2px 0 0; }
+.win.amber { background: rgba(255,200,80,0.2); }
+.win.blue { background: rgba(200,220,255,0.15); }
+.bldg-3 { width: 120px; height: 120px; margin-left: 40px; }
+
+/* Ground & Students */
+.ground-layer { top: auto; bottom: 0; height: 25%; background: linear-gradient(180deg, #060B18 0%, #040810 100%); border-top: 1px solid rgba(255,255,255,0.02); }
+.road { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; height: 100%; background: linear-gradient(180deg, transparent, rgba(255,255,255,0.02)); clip-path: polygon(40% 100%, 60% 100%, 52% 0, 48% 0); }
+.lamp { position: absolute; bottom: 40%; width: 2px; height: 40px; background: #111; }
+.lamp::after { content: ''; position: absolute; top: -4px; left: -4px; width: 10px; height: 10px; background: rgba(255,200,80,0.8); border-radius: 50%; box-shadow: 0 0 20px rgba(255,200,80,0.4); }
+.lamp-glow { position: absolute; bottom: -5px; left: -30px; width: 60px; height: 10px; background: radial-gradient(ellipse at center, rgba(255,200,80,0.15) 0%, transparent 70%); animation: lampBreathe 3s infinite alternate; }
+@keyframes lampBreathe { from { opacity: 0.7; } to { opacity: 1; } }
+.l-1 { left: 20%; bottom: 50%; transform: scale(0.6); } .l-2 { left: 45%; bottom: 30%; } .l-3 { right: 40%; bottom: 20%; transform: scale(1.2); }
+
+.student-a { position: absolute; bottom: 25px; left: 22%; width: 16px; height: 24px; background: #040810; border-radius: 8px 8px 0 0; }
+.laptop-glow { position: absolute; top: 10px; left: 14px; width: 4px; height: 8px; background: rgba(45,212,191,0.8); box-shadow: -5px 0 10px rgba(45,212,191,0.4); border-radius: 2px; }
+.student-b { position: absolute; bottom: 40px; right: 42%; width: 12px; height: 36px; background: #03060C; border-radius: 6px; }
+.phone-glow { position: absolute; top: 12px; left: -4px; width: 2px; height: 4px; background: rgba(255,255,255,0.9); box-shadow: 0 0 5px rgba(255,255,255,0.5); }
+.trees { position: absolute; bottom: 20%; left: 5%; width: 40px; height: 60px; background: #020408; border-radius: 50% 50% 0 0; box-shadow: 60px 10px 0 -10px #03060C, 250px -5px 0 10px #020408, 300px 5px 0 -15px #040810; }
+
+/* UI Layer: Identity, Tagline, Stats */
+.badge { position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 16px; }
+.badge-ring { width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--gold-border); display: flex; justify-content: center; align-items: center; background: rgba(6,11,24,0.5); box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+.badge-text .title { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; color: var(--white); }
+.badge-text .sub { font-size: 9px; color: var(--muted); margin-top: 2px; }
+
+.pills { position: absolute; top: 120px; left: 40px; display: flex; flex-direction: column; gap: 12px; }
+.pill { background: rgba(6,11,24,0.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid var(--border-1); border-radius: 999px; padding: 6px 14px; display: inline-flex; align-items: center; gap: 8px; font-size: 9px; color: var(--white); width: fit-content; animation: floatPill 6s infinite ease-in-out; will-change: transform; }
+@keyframes floatPill { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.pill:nth-child(2) { animation-delay: -2s; } .pill:nth-child(3) { animation-delay: -4s; }
+.dot-green { width: 6px; height: 6px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+.dot-gold { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+.dot-teal { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); }
+
+.tagline-container { position: absolute; bottom: 120px; left: 40px; }
+.tagline { font-size: clamp(24px, 3vw, 38px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 12px; }
+.tagline .teal { color: var(--teal); }
+.tag-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.05em; }
+
+.stats-strip { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.35); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid var(--border-0); display: flex; padding: 20px 40px; gap: 40px; }
+.stat-item { display: flex; flex-direction: column; gap: 4px; }
+.stat-val { font-size: 18px; font-weight: 700; color: var(--white); }
+.stat-lbl { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+
+/* ── RIGHT PANEL: LOGIN CARD ──────────────────────────────────────────── */
+.login-card { width: 100%; max-width: 380px; background: rgba(17,24,39,0.75); backdrop-filter: blur(48px) saturate(160%); -webkit-backdrop-filter: blur(48px) saturate(160%); border: 1px solid rgba(255,255,255,0.10); border-radius: 28px; padding: 48px 40px; position: relative; box-shadow: 0 32px 80px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.07), 0 0 60px rgba(45,212,191,0.03); margin: 0 24px; }
+.card-top-glow { position: absolute; top: 0; left: 0; width: 100%; height: 0.5px; background: linear-gradient(90deg, transparent, rgba(201,168,76,0.35), transparent); }
+
+.card-header { text-align: center; margin-bottom: 32px; }
+.avatar-ring { width: 64px; height: 64px; margin: 0 auto 20px auto; border: 1px solid var(--gold-border); border-radius: 50%; background: linear-gradient(135deg, rgba(201,168,76,0.1), rgba(45,212,191,0.05)); display: flex; justify-content: center; align-items: center; color: var(--gold); font-size: 26px; font-weight: 800; font-family: var(--sans); }
+.brand-name { font-size: 24px; font-weight: 800; letter-spacing: 0.32em; color: var(--white); margin-bottom: 4px; margin-right: -0.32em; }
+.brand-sub { font-size: 9px; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase; }
+.card-divider { height: 0.5px; background: var(--border-0); margin: 24px 0; }
+
+.welcome-text { margin-bottom: 24px; }
+.welcome-title { font-size: 14px; font-weight: 500; color: var(--white); margin-bottom: 4px; }
+.welcome-sub { font-size: 12px; color: var(--muted); }
+
+/* Form Elements */
+.input-group { margin-bottom: 20px; position: relative; }
+.input-label { display: block; font-size: 8px; color: var(--muted); letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 8px; }
+.input-wrapper { position: relative; display: flex; align-items: center; }
+.input-icon { position: absolute; left: 14px; color: var(--muted); font-size: 14px; transition: color 0.3s; pointer-events: none; }
+.form-control { width: 100%; background: var(--surface-3); border: 1px solid var(--border-1); border-radius: 12px; padding: 13px 14px 13px 42px; font-size: 14px; color: var(--white); outline: none; transition: all 0.3s ease; min-height: 44px; }
+.form-control:focus { border-color: rgba(45,212,191,0.4); box-shadow: 0 0 0 3px rgba(45,212,191,0.07); }
+.form-control:focus + .input-icon, .form-control:not(:placeholder-shown) + .input-icon { color: var(--teal); }
+
+/* Ghost Autocomplete */
+.ghost-overlay { position: absolute; left: 42px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 14px; white-space: pre; color: transparent; display: flex; }
+.ghost-domain { color: var(--dim); display: none; }
+
+/* Password Strength & Toggle */
+.show-hide { position: absolute; right: 14px; font-size: 8px; color: var(--muted); text-transform: uppercase; cursor: pointer; transition: color 0.3s; min-height: 44px; display: flex; align-items: center; }
+.show-hide:hover { color: var(--white); }
+.strength-bar { display: flex; gap: 4px; margin-top: 8px; height: 3px; opacity: 0; transition: opacity 0.3s; }
+.strength-bar.visible { opacity: 1; }
+.s-seg { flex: 1; background: var(--surface-3); border-radius: 2px; transition: background 0.3s; }
+
+/* Options Row */
+.options-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
+.toggle-wrapper { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.toggle-switch { width: 36px; height: 20px; background: rgba(255,255,255,0.08); border-radius: 999px; position: relative; transition: background 0.3s; }
+.toggle-thumb { width: 16px; height: 16px; background: #fff; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+input[type="checkbox"] { display: none; }
+input[type="checkbox"]:checked + .toggle-switch { background: var(--teal); }
+input[type="checkbox"]:checked + .toggle-switch .toggle-thumb { transform: translateX(16px); }
+.toggle-lbl { font-size: 11px; color: var(--muted); }
+.forgot-link { font-size: 11px; color: var(--muted); text-decoration: none; transition: color 0.3s; }
+.forgot-link:hover { color: var(--white); }
+
+/* Submit Button */
+.btn-submit { width: 100%; height: 56px; background: linear-gradient(135deg, #B8922A 0%, var(--gold) 40%, var(--gold-2) 70%, #C4960F 100%); border: none; border-radius: 14px; color: #060B18; font-size: 10px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer; position: relative; overflow: hidden; box-shadow: inset 0 1px 0 rgba(255,255,255,0.2); transition: transform 0.3s, box-shadow 0.3s, opacity 0.3s; display: flex; justify-content: center; align-items: center; gap: 8px; }
+.btn-submit::after { content: ''; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent); transform: skewX(-20deg); transition: none; }
+.btn-submit:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(201,168,76,0.28), 0 0 0 1px rgba(201,168,76,0.2); }
+.btn-submit:hover::after { animation: shimmer 0.6s ease-out forwards; }
+@keyframes shimmer { 100% { left: 150%; } }
+.spinner { width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.2); border-top-color: #060B18; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-submit.loading { opacity: 0.7; pointer-events: none; }
+.btn-submit.loading .spinner { display: block; }
+
+/* Trust Signals & Toast */
+.trust-signals { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 16px; font-size: 8px; color: var(--muted); letter-spacing: 0.05em; }
+.toast-area { min-height: 20px; margin-top: 20px; }
+.toast { width: 100%; padding: 10px 14px; border-radius: 8px; font-size: 11px; font-weight: 500; display: none; align-items: center; gap: 8px; animation: toastSlide 0.3s ease-out forwards; }
+@keyframes toastSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.toast.error { display: flex; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); color: var(--error); }
+.toast.success { display: flex; background: var(--teal-dim); border: 1px solid rgba(45,212,191,0.2); color: var(--teal); }
+
+/* Footer */
+.card-footer { margin-top: 32px; text-align: center; border-top: 1px solid var(--border-0); padding-top: 24px; }
+.new-user { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+.new-user a { color: var(--teal); text-decoration: none; font-weight: 500; }
+.terms { font-size: 8px; color: var(--dim); }
+
+/* ── RESPONSIVE & ACCESSIBILITY ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+    .split-canvas { flex-direction: column; }
+    .left-panel { flex: 0 0 200px; }
+    .ground-layer, .stats-strip, .pills { display: none; }
+    .tagline-container { bottom: 30px; left: 24px; }
+    .badge { top: 24px; left: 24px; transform: scale(0.85); transform-origin: top left; }
+    .right-panel { flex: 1; align-items: flex-start; padding-top: 24px; }
+    .login-card { max-width: 100%; border-radius: 28px 28px 0 0; border: none; border-top: 1px solid var(--border-1); padding: 32px 24px; margin: 0; background: var(--night); box-shadow: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition-duration: 0.01ms !important; }
+    #cursor { display: none !important; }
+}
+@media (pointer: coarse) {
+    #cursor { display: none !important; }
+    .btn-submit:active { transform: translateY(1px); }
+}
+</style>
+</head>
+<body>
+
+<div id="preloader">
+    <div class="pl-track"><div class="pl-fill" id="pl-fill"></div></div>
+</div>
+
+<div id="cursor"></div>
+
+<div class="split-canvas">
+    <div class="left-panel">
+        <div class="sky-layer">
+            <div class="aurora"></div>
+            <div class="stars"></div>
+            <div class="star-twinkle"></div>
+            <div class="moon-halo"></div>
+            <div class="moon"></div>
+        </div>
+        
+        <div class="skyline-layer">
+            <div class="bldg bldg-1"><div class="bldg-windows"></div></div>
+            <div class="bldg bldg-2"><div class="bldg-windows"></div></div>
+            <div class="tower-wing"></div>
+            <div class="tower-main">
+                <div class="tower-windows">
+                    <div class="win amber"></div><div class="win"></div><div class="win blue"></div>
+                    <div class="win"></div><div class="win amber"></div><div class="win"></div>
+                    <div class="win blue"></div><div class="win"></div><div class="win amber"></div>
+                    <div class="win amber"></div><div class="win blue"></div><div class="win"></div>
+                    <div class="win"></div><div class="win"></div><div class="win amber"></div>
+                </div>
+            </div>
+            <div class="tower-wing"></div>
+            <div class="bldg bldg-3"><div class="bldg-windows"></div></div>
+        </div>
+        
+        <div class="ground-layer">
+            <div class="road"></div>
+            <div class="lamp l-1"><div class="lamp-glow"></div></div>
+            <div class="lamp l-2"><div class="lamp-glow"></div></div>
+            <div class="lamp l-3"><div class="lamp-glow"></div></div>
+            <div class="trees"></div>
+            
+            <div class="student-a"><div class="laptop-glow"></div></div>
+            <div class="student-b"><div class="phone-glow"></div></div>
+        </div>
+        
+        <div class="ui-layer">
+            <div class="badge">
+                <div class="badge-ring t-mono">M</div>
+                <div class="badge-text">
+                    <div class="title">UNIVERSITY OF NAIROBI</div>
+                    <div class="sub t-mono">Est. 1956 · Nairobi, Kenya</div>
+                </div>
+            </div>
+            
+            <div class="pills">
+                <div class="pill"><div class="dot-green"></div> Portal Active</div>
+                <div class="pill"><div class="dot-gold"></div> Semester 2 · 2026</div>
+                <div class="pill"><div class="dot-teal"></div> 256-bit Encrypted</div>
+            </div>
+            
+            <div class="tagline-container">
+                <div class="tagline">Your fees.<br>Protected.<br><span class="teal">Always.</span></div>
+                <div class="tag-sub t-mono">MILELE Escrow · Built for UoN students · Since 2022</div>
+            </div>
+            
+            <div class="stats-strip t-mono">
+                <div class="stat-item"><div class="stat-val t-data">KSh 2.4B</div><div class="stat-lbl">Secured</div></div>
+                <div class="stat-item"><div class="stat-val t-data">48,000+</div><div class="stat-lbl">Students</div></div>
+                <div class="stat-item"><div class="stat-val t-data">100%</div><div class="stat-lbl">Insured</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="login-card">
+            <div class="card-top-glow"></div>
+            
+            <div class="card-header">
+                <div class="avatar-ring">M</div>
+                <div class="brand-name t-sans">MILELE</div>
+                <div class="brand-sub t-mono">Student Escrow Portal</div>
+            </div>
+            
+            <div class="card-divider"></div>
+            
+            <div class="welcome-text">
+                <div class="welcome-title">Welcome back, scholar.</div>
+                <div class="welcome-sub">Sign in to access your escrow account.</div>
+            </div>
+            
+            <form id="auth-form" novalidate>
+                <div class="input-group">
+                    <label class="input-label t-mono">University Email</label>
+                    <div class="input-wrapper">
+                        <input type="email" id="email" class="form-control" placeholder="" autocomplete="email" inputmode="email" spellcheck="false" required>
+                        <span class="input-icon">✉</span>
+                        <div class="ghost-overlay">
+                            <span id="ghost-typed"></span><span id="ghost-domain" class="ghost-domain">@students.uonbi.ac.ke</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-group">
+                    <label class="input-label t-mono">Security Passkey</label>
+                    <div class="input-wrapper">
+                        <input type="password" id="password" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
+                        <span class="input-icon">🔒</span>
+                        <div class="show-hide t-mono" id="toggle-pw">Show</div>
+                    </div>
+                    <div class="strength-bar" id="strength-bar">
+                        <div class="s-seg" id="seg-1"></div>
+                        <div class="s-seg" id="seg-2"></div>
+                        <div class="s-seg" id="seg-3"></div>
+                    </div>
+                </div>
+                
+                <div class="options-row">
+                    <label class="toggle-wrapper">
+                        <input type="checkbox" id="remember">
+                        <div class="toggle-switch"><div class="toggle-thumb"></div></div>
+                        <span class="toggle-lbl">Remember this device</span>
+                    </label>
+                    <a href="#" class="forgot-link">Forgot passkey?</a>
+                </div>
+                
+                <button type="submit" id="submit-btn" class="btn-submit t-mono">
+                    <span id="btn-text">Authenticate &rarr;</span>
+                    <div class="spinner" id="btn-spinner"></div>
+                </button>
+                
+                <div class="trust-signals t-mono">
+                    <span>🔒 256-bit AES</span> &middot; <span>🛡 TLS 1.3</span> &middot; <span>✓ FDIC Insured</span>
+                </div>
+                
+                <div class="toast-area">
+                    <div id="toast-msg" class="toast t-mono"></div>
+                </div>
+            </form>
+            
+            <div class="card-footer">
+                <div class="new-user">New to MILELE? <a href="#">Request Access &rarr;</a></div>
+                <div class="terms t-mono">By signing in you agree to Escrow Terms &middot; Privacy Policy</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Preloader
+    setTimeout(() => {
+        document.getElementById('pl-fill').style.transform = 'scaleX(1)';
+        setTimeout(() => {
+            const pl = document.getElementById('preloader');
+            pl.style.opacity = '0';
+            setTimeout(() => pl.remove(), 600);
+        }, 1400);
+    }, 100);
+
+    // 2. Custom Cursor
+    if (window.matchMedia("(pointer: fine)").matches) {
+        const cursor = document.getElementById('cursor');
+        let mouseX = window.innerWidth / 2, mouseY = window.innerHeight / 2;
+        let cursorX = mouseX, cursorY = mouseY;
+        
+        document.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
+        
+        const renderCursor = () => {
+            cursorX += (mouseX - cursorX) * 0.1;
+            cursorY += (mouseY - cursorY) * 0.1;
+            cursor.style.transform = `translate(${cursorX}px, ${cursorY}px)`;
+            requestAnimationFrame(renderCursor);
+        };
+        requestAnimationFrame(renderCursor);
+
+        document.querySelectorAll('input, button, a, .toggle-wrapper, .show-hide').forEach(el => {
+            el.addEventListener('mouseenter', () => cursor.classList.add('hovered'));
+            el.addEventListener('mouseleave', () => cursor.classList.remove('hovered'));
+        });
+    }
+
+    // 3. Email Ghost Autocomplete
+    const emailInput = document.getElementById('email');
+    const ghostTyped = document.getElementById('ghost-typed');
+    const ghostDomain = document.getElementById('ghost-domain');
+    const domain = "@students.uonbi.ac.ke";
+
+    emailInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.length > 0 && !val.includes('@')) {
+            ghostTyped.textContent = val;
+            ghostDomain.style.display = 'inline';
+        } else {
+            ghostTyped.textContent = '';
+            ghostDomain.style.display = 'none';
+        }
+    });
+
+    emailInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab' && ghostDomain.style.display === 'inline') {
+            e.preventDefault();
+            emailInput.value = emailInput.value + domain;
+            ghostTyped.textContent = '';
+            ghostDomain.style.display = 'none';
+        }
+    });
+
+    // 4. Password Strength & Toggle
+    const pwInput = document.getElementById('password');
+    const pwToggle = document.getElementById('toggle-pw');
+    const sBar = document.getElementById('strength-bar');
+    const seg1 = document.getElementById('seg-1');
+    const seg2 = document.getElementById('seg-2');
+    const seg3 = document.getElementById('seg-3');
+
+    pwToggle.addEventListener('click', () => {
+        const type = pwInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        pwInput.setAttribute('type', type);
+        pwToggle.textContent = type === 'password' ? 'Show' : 'Hide';
+    });
+
+    pwInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val.length > 0) sBar.classList.add('visible');
+        else sBar.classList.remove('visible');
+
+        let strength = 0;
+        if (val.length >= 8) strength++;
+        if (val.match(/[0-9]/) && val.match(/[a-zA-Z]/)) strength++;
+        if (val.match(/[^a-zA-Z0-9]/)) strength++;
+
+        const resetSegs = () => { seg1.style.background = seg2.style.background = seg3.style.background = 'var(--surface-3)'; };
+        resetSegs();
+
+        if (strength === 1) { seg1.style.background = 'var(--error)'; }
+        if (strength === 2) { seg1.style.background = seg2.style.background = 'var(--warning)'; }
+        if (strength === 3) { seg1.style.background = seg2.style.background = seg3.style.background = 'var(--success)'; }
+    });
+
+    // 5. Form Submission Logic with LIVE PHP Backend Connection
+    const form = document.getElementById('auth-form');
+    const btn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const toast = document.getElementById('toast-msg');
+
+    const showToast = (type, message) => {
+        toast.className = `toast t-mono ${type}`;
+        toast.innerHTML = type === 'error' ? `[ ERR ] ${message}` : `[ OK ] ${message}`;
+        toast.style.display = 'flex';
+    };
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        toast.style.display = 'none';
+        
+        const email = emailInput.value;
+        const pw = pwInput.value;
+
+        if (!email.includes('@students.uonbi.ac.ke')) {
+            showToast('error', 'Invalid UoN email address.');
+            return;
+        }
+        if (pw.length < 4) {
+            showToast('error', 'Passkey required.');
+            return;
+        }
+
+        // Loading State On
+        btn.classList.add('loading');
+        btnText.textContent = 'Verifying...';
+
+        // ==========================================
+        // REAL NETWORK CONNECTION TO PHP BACKEND
+        // ==========================================
+        
+        const payload = {
+            email: email,
+            password: pw
+        };
+
+        fetch('http://localhost/MILELE/backend/api/login.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Turn off the loading spinner
+            btn.classList.remove('loading');
+            btnText.textContent = 'Authenticate \u2192'; 
+
+            // Check if the PHP backend said "success" or "error"
+            if (data.status === 'success') {
+                showToast('success', 'Handshake verified. Redirecting...');
+                
+                // If successful, redirect the user to the main campus feed
+                setTimeout(() => {
+                    window.location.href = 'feed.html';
+                }, 1500);
+                
+            } else {
+                // If the PHP backend rejected the login
+                showToast('error', data.message);
+            }
+        })
+        .catch(error => {
+            // If the server is turned off or broken
+            btn.classList.remove('loading');
+            btnText.textContent = 'Authenticate \u2192';
+            showToast('error', 'Network error. Cannot reach secure server.');
+            console.error('Error:', error);
+        });
+    });
+});
+</script>
+</body>
+</html>

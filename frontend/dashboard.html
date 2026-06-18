@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MILELE — Seller Vault</title>
+<style>
+:root {
+    --night: #060B18;
+    --surface-1: #0C1220;
+    --surface-2: #111827;
+    --border-0: rgba(255,255,255,0.05);
+    --border-1: rgba(255,255,255,0.10);
+    --gold: #C9A84C;
+    --teal: #2DD4BF;
+    --white: #EEF0F5;
+    --muted: #5A6070;
+    --success: #4ADE80;
+    --error: #F87171;
+    --mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: var(--sans); background: var(--night); color: var(--white); height: 100vh; overflow: hidden; display: flex; cursor: none; }
+.t-mono { font-family: var(--mono); }
+.t-data { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ── PRELOADER & CURSOR ── */
+#preloader { position: fixed; inset: 0; background: var(--night); z-index: 9999; display: flex; justify-content: center; align-items: center; transition: opacity 0.6s ease; }
+.pl-track { width: 160px; height: 1px; background: var(--border-1); position: relative; overflow: hidden; }
+.pl-fill { position: absolute; top: 0; left: 0; height: 100%; width: 100%; background: var(--gold); transform-origin: left; transform: scaleX(0); transition: transform 1.4s cubic-bezier(0.76,0,0.24,1); }
+
+#cursor { position: fixed; width: 20px; height: 20px; border: 1px solid rgba(201,168,76,0.3); border-radius: 50%; pointer-events: none; z-index: 10000; transform: translate(-50%, -50%); display: flex; justify-content: center; align-items: center; transition: background 0.3s, border-color 0.3s; }
+#cursor::after { content: ''; width: 4px; height: 4px; background: var(--gold); border-radius: 50%; transition: background 0.3s; }
+#cursor.hovered { background: rgba(45,212,191,0.06); border-color: var(--teal); }
+#cursor.hovered::after { background: var(--teal); }
+@media (pointer: coarse) { #cursor { display: none !important; } }
+
+/* ── LAYOUT ── */
+.split-canvas { display: flex; width: 100%; height: 100%; }
+.left-panel { flex: 0 0 55%; position: relative; overflow: hidden; background: linear-gradient(180deg, #060B18 0%, #0A1428 40%, #0D1A35 70%, #0A1220 100%); }
+.right-panel { flex: 0 0 45%; background: var(--night); overflow-y: auto; display: flex; flex-direction: column; }
+
+/* ── LEFT PANEL ART ── */
+.sky-layer, .skyline-layer, .ground-layer, .ui-layer { position: absolute; inset: 0; pointer-events: none; }
+.moon { position: absolute; top: 15%; right: 25%; width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #F5E8C8, var(--gold)); box-shadow: 0 0 40px rgba(201,168,76,0.3); }
+.stars { position: absolute; inset: 0; background-image: radial-gradient(1px 1px at 10% 20%, #fff 100%, transparent), radial-gradient(2px 2px at 40% 15%, var(--gold) 100%, transparent); background-size: 100% 100%; opacity: 0.6; }
+.bldg { background: #070D1C; border-top: 1px solid rgba(255,255,255,0.05); }
+.skyline-layer { bottom: 20%; top: auto; height: 50%; display: flex; align-items: flex-end; justify-content: center; gap: 10px; }
+.bldg-1 { width: 100px; height: 140px; } .bldg-2 { width: 80px; height: 100px; margin-right: 40px; } .bldg-3 { width: 120px; height: 120px; margin-left: 40px; }
+.tower-main { width: 90px; height: 220px; background: #050914; border-top: 3px solid rgba(201,168,76,0.4); }
+.ground-layer { top: auto; bottom: 0; height: 25%; background: linear-gradient(180deg, #060B18 0%, #040810 100%); border-top: 1px solid rgba(255,255,255,0.02); }
+
+/* ── IDENTITY ── */
+.badge { position: absolute; top: 40px; left: 40px; display: flex; align-items: center; gap: 16px; }
+.badge-ring { width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(201,168,76,0.3); display: flex; justify-content: center; align-items: center; background: rgba(6,11,24,0.5); color: var(--gold); font-size: 18px; font-weight: 800; }
+.badge-text .title { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; color: var(--white); }
+.badge-text .sub { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.tagline-container { position: absolute; bottom: 120px; left: 40px; }
+.tagline { font-size: clamp(24px, 3vw, 38px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 12px; }
+.tagline .teal { color: var(--teal); }
+.tag-sub { font-size: 10px; color: var(--muted); letter-spacing: 0.05em; }
+
+/* ── RIGHT PANEL (VAULT) ── */
+.dash-header { padding: 40px; border-bottom: 1px solid var(--border-0); }
+.dash-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 8px; }
+.dash-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+.dash-content { padding: 40px; flex-grow: 1; }
+.escrow-list { display: flex; flex-direction: column; gap: 24px; }
+
+.escrow-card { background: rgba(17,24,39,0.5); border: 1px solid var(--border-1); border-radius: 20px; padding: 32px; display: flex; flex-direction: column; gap: 24px; position: relative; }
+.escrow-card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--teal); }
+.item-info { display: flex; justify-content: space-between; align-items: flex-start; }
+.status-badge { font-size: 8px; color: var(--night); background: var(--teal); padding: 4px 10px; border-radius: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom:8px; display:inline-block;}
+.item-title { font-size: 18px; font-weight: 600; }
+.item-price { font-size: 20px; font-weight: 700; color: var(--gold); }
+.item-price span { font-size: 10px; color: var(--muted); margin-right: 4px; }
+
+.terminal { background: var(--surface-1); border: 1px solid var(--border-0); border-radius: 16px; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.terminal-lbl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.15em; }
+.terminal-controls { display: flex; gap: 12px; width: 100%; justify-content: center; }
+.pin-input { background: var(--night); border: 1px solid rgba(45,212,191,0.2); border-radius: 12px; color: var(--teal); font-size: 20px; text-align: center; letter-spacing: 0.4em; padding: 12px; width: 160px; outline: none; }
+.pin-input:focus { border-color: var(--teal); }
+.btn-verify { background: var(--white); color: var(--night); border: none; padding: 0 24px; border-radius: 12px; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.15em; transition: 0.3s; cursor: none;}
+.btn-verify:hover { background: var(--teal); transform: translateY(-2px); }
+
+.empty-state { text-align: center; padding: 80px 20px; color: var(--muted); font-size: 11px; letter-spacing: 0.1em; }
+.toast-area { position: fixed; bottom: 40px; right: 40px; z-index: 1000; }
+.toast { background: rgba(17,24,39,0.95); border: 1px solid var(--border-1); padding: 16px 24px; border-radius: 12px; font-size: 10px; opacity: 0; pointer-events: none; transition: 0.4s; transform: translateY(20px); }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.success { border-color: rgba(74,222,128,0.3); color: var(--success); }
+.toast.error { border-color: rgba(248,113,113,0.3); color: var(--error); }
+</style>
+</head>
+<body>
+
+<div id="preloader"><div class="pl-track"><div class="pl-fill" id="pl-fill"></div></div></div>
+<div id="cursor"><div class="cdot"></div></div>
+
+<div class="split-canvas">
+    <div class="left-panel">
+        <div class="sky-layer"><div class="stars"></div><div class="moon"></div></div>
+        <div class="skyline-layer">
+            <div class="bldg bldg-1"></div><div class="bldg bldg-2"></div><div class="tower-main"></div><div class="bldg bldg-3"></div>
+        </div>
+        <div class="ground-layer"></div>
+        
+        <div class="ui-layer">
+            <div class="badge">
+                <div class="badge-ring t-mono">C</div>
+                <div class="badge-text">
+                    <div class="title">THE COMRADES NETWORK</div>
+                    <div class="sub t-mono">Verified Campus Hustles · +254</div>
+                </div>
+            </div>
+            <div class="tagline-container">
+                <div class="tagline">Your hustle.<br>Protected.<br><span style="color:var(--teal)">Milele.</span></div>
+                <div class="tag-sub t-mono">Secure Settlement Vault · Built for the Culture</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="dash-header">
+            <h1 class="dash-title">Seller Vault</h1>
+            <p class="dash-sub t-mono">Awaiting buyer cryptographic handshake</p>
+        </div>
+        <div class="dash-content">
+            <div class="escrow-list" id="escrow-list">
+                <div class="empty-state t-mono">CONNECTING TO SECURE LEDGER...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="toast-area"><div id="toast" class="t-mono"></div></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. Preloader & Cursor setup
+    setTimeout(() => { document.getElementById('pl-fill').style.transform = 'scaleX(1)'; setTimeout(() => { document.getElementById('preloader').style.opacity = '0'; setTimeout(() => document.getElementById('preloader').remove(), 600); }, 1000); }, 100);
+    const cursor = document.getElementById('cursor');
+    if(window.matchMedia("(pointer: fine)").matches) { document.addEventListener('mousemove', e => { cursor.style.left = e.clientX + 'px'; cursor.style.top = e.clientY + 'px'; }); }
+
+    // 2. Toast System
+    let toastTimer;
+    const showToast = (msg, type) => {
+        const t = document.getElementById('toast');
+        t.className = `toast t-mono show ${type}`;
+        t.innerHTML = type === 'success' ? `[ OK ] ${msg}` : `[ ERR ] ${msg}`;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { t.classList.remove('show'); }, 4000);
+    };
+
+    // 3. Fetch Data
+    const list = document.getElementById('escrow-list');
+    async function fetchSellerEscrows() {
+        try {
+            // Ensures exactly matching the localhost path
+            const response = await fetch('http://localhost/MILELE/backend/api/seller_escrows.php?nocache=' + new Date().getTime());
+            const data = await response.json();
+            list.innerHTML = '';
+
+            if (data.status === 'success') {
+                if (data.data.length === 0) {
+                    list.innerHTML = `<div class="empty-state t-mono" style="border:1px dashed var(--border-1); border-radius: 16px;">NO FUNDS PENDING HANDSHAKE.</div>`;
+                    return;
+                }
+                data.data.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'escrow-card';
+                    card.innerHTML = `
+                        <div class="item-info">
+                            <div>
+                                <div class="status-badge t-mono">FUNDS SECURED</div>
+                                <div class="item-title">${item.title}</div>
+                            </div>
+                            <div class="item-price t-data"><span>KSH</span>${parseFloat(item.amount).toLocaleString()}</div>
+                        </div>
+                        <div class="terminal">
+                            <div class="terminal-lbl t-mono">Enter Buyer's 6-Digit Code</div>
+                            <div class="terminal-controls">
+                                <input type="text" class="pin-input t-data" id="pin-${item.escrow_id}" maxlength="6" placeholder="------" autocomplete="off">
+                                <button class="btn-verify t-mono" onclick="verifyHandshake('${item.escrow_id}')">Verify Handshake &rarr;</button>
+                            </div>
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+                document.querySelectorAll('button, input').forEach(el => { el.addEventListener('mouseenter', () => cursor.classList.add('hovered')); el.addEventListener('mouseleave', () => cursor.classList.remove('hovered')); });
+            } else {
+                list.innerHTML = `<div class="empty-state t-mono" style="color:var(--error)">${data.message}</div>`;
+            }
+        } catch (error) {
+            list.innerHTML = `<div class="empty-state t-mono" style="color:var(--error)">NETWORK ERROR: VAULT OFFLINE. Check XAMPP/File Paths.</div>`;
+        }
+    }
+
+    // 4. Verification Logic
+    window.verifyHandshake = async (escrowId) => {
+        const pinInput = document.getElementById(`pin-${escrowId}`);
+        const pin = pinInput.value.trim();
+
+        if (pin.length !== 6) { showToast('Handshake code must be exactly 6 digits.', 'error'); return; }
+        showToast('Verifying cryptographic hash...', '');
+
+        try {
+            const response = await fetch('http://localhost/MILELE/backend/api/verify_handshake.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ escrow_id: escrowId, entered_otp: pin })
+            });
+            const data = await response.json();
+
+            if (data.status === 'success') {
+                showToast('Handshake Verified! Releasing funds.', 'success');
+                pinInput.value = 'OK';
+                pinInput.style.color = 'var(--success)';
+                pinInput.style.borderColor = 'var(--success)';
+                pinInput.disabled = true;
+                setTimeout(() => { fetchSellerEscrows(); }, 2500);
+            } else {
+                showToast(data.message, 'error');
+                pinInput.value = '';
+            }
+        } catch (error) {
+            showToast('Gateway Error: Could not reach verification server.', 'error');
+        }
+    };
+
+    fetchSellerEscrows();
+});
+</script>
+</body>
+</html>

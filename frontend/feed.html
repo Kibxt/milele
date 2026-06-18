@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MILELE — Campus Marketplace</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --night:#060B18;
+  --surface-1:#0C1220;
+  --surface-2:#111827;
+  --surface-3:#192034;
+  --glass:rgba(255,255,255,0.04);
+  --glass-2:rgba(255,255,255,0.07);
+  --border-0:rgba(255,255,255,0.05);
+  --border-1:rgba(255,255,255,0.10);
+  --border-2:rgba(255,255,255,0.20);
+  --gold:#C9A84C;
+  --gold-2:#E8C97A;
+  --gold-glow:rgba(201,168,76,0.08);
+  --teal:#2DD4BF;
+  --teal-dim:rgba(45,212,191,0.10);
+  --teal-glow:rgba(45,212,191,0.06);
+  --white:#EEF0F5;
+  --muted:#5A6070;
+  --dim:#252D3D;
+  --success:#4ADE80;
+  --warning:#FBBF24;
+  --error:#F87171;
+  --mono:'SF Mono','JetBrains Mono','Fira Code',monospace;
+  --sans:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
+}
+html{cursor:none;scroll-behavior:smooth}
+body{
+  font-family:var(--sans);
+  background:var(--night);
+  color:var(--white);
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── CURSOR ───────────────────────────────────────────────── */
+#cursor{
+  position:fixed;width:22px;height:22px;border-radius:50%;
+  border:1px solid rgba(45,212,191,0.4);
+  pointer-events:none;z-index:9999;
+  transform:translate(-50%,-50%);
+  transition:width .3s cubic-bezier(.34,1.56,.64,1),height .3s cubic-bezier(.34,1.56,.64,1),background .2s,border-color .2s;
+}
+#cursor .cdot{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:3px;border-radius:50%;background:var(--teal)}
+#cursor.hover{width:52px;height:52px;background:rgba(45,212,191,0.06);border-color:var(--teal)}
+#cursor.click{width:14px;height:14px}
+@media(pointer:coarse){#cursor{display:none}html{cursor:auto}}
+
+/* ── PRELOADER ────────────────────────────────────────────── */
+#preloader{
+  position:fixed;inset:0;background:var(--night);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:10000;transition:opacity .6s ease;
+}
+.pre-logo{font-size:10px;font-family:var(--mono);letter-spacing:.55em;color:var(--muted);text-transform:uppercase;margin-bottom:24px}
+.pre-track{width:160px;height:.5px;background:var(--dim);position:relative;overflow:hidden}
+.pre-fill{position:absolute;inset-block:0;left:0;width:0%;background:var(--gold);transition:width 1.4s cubic-bezier(.76,0,.24,1)}
+
+/* ── SCROLL PROGRESS ──────────────────────────────────────── */
+#prog{position:fixed;top:0;left:0;height:1px;background:var(--gold);width:0%;z-index:9998;transition:width .08s linear}
+
+/* ── BACKGROUND ───────────────────────────────────────────── */
+.bg-orb{position:fixed;border-radius:50%;pointer-events:none;z-index:0}
+.bg-orb-1{width:800px;height:800px;top:-200px;left:-200px;background:radial-gradient(circle,rgba(45,212,191,0.05),transparent 70%);filter:blur(80px);animation:orbf1 30s ease-in-out infinite}
+.bg-orb-2{width:600px;height:600px;bottom:-150px;right:-150px;background:radial-gradient(circle,rgba(201,168,76,0.07),transparent 70%);filter:blur(70px);animation:orbf2 24s ease-in-out infinite}
+.bg-orb-3{width:400px;height:400px;top:40%;left:40%;background:radial-gradient(circle,rgba(30,50,120,0.06),transparent 70%);filter:blur(60px);animation:orbf3 18s ease-in-out infinite}
+@keyframes orbf1{0%,100%{transform:translate(0,0)}50%{transform:translate(40px,-30px)}}
+@keyframes orbf2{0%,100%{transform:translate(0,0)}50%{transform:translate(-35px,25px)}}
+@keyframes orbf3{0%,100%{transform:translate(0,0)}50%{transform:translate(-20px,30px)}}
+
+/* ── NAV ──────────────────────────────────────────────────── */
+nav{
+  position:sticky;top:0;z-index:100;
+  background:rgba(6,11,24,0.75);
+  backdrop-filter:blur(40px) saturate(180%);
+  -webkit-backdrop-filter:blur(40px) saturate(180%);
+  border-bottom:1px solid var(--border-0);
+  padding:0 clamp(20px,4vw,56px);
+  height:64px;
+  display:flex;align-items:center;justify-content:space-between;
+  transition:height .3s ease,background .3s ease,border-color .3s ease;
+}
+nav.scrolled{height:52px;background:rgba(6,11,24,0.92);border-color:var(--border-1)}
+.nav-left{display:flex;align-items:center;gap:32px}
+.brand{display:flex;align-items:center;gap:10px;cursor:none}
+.brand-ring{
+  width:34px;height:34px;border-radius:50%;
+  border:1px solid rgba(201,168,76,0.3);
+  background:linear-gradient(135deg,rgba(201,168,76,0.1),rgba(45,212,191,0.05));
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;color:var(--gold);font-family:var(--mono);
+  box-shadow:0 0 16px rgba(201,168,76,0.1);
+}
+.brand-name{font-size:14px;font-weight:800;letter-spacing:.28em;color:var(--white)}
+.nav-links{display:flex;gap:0;list-style:none}
+.nav-links a{
+  font-size:11px;font-family:var(--mono);color:var(--muted);
+  text-decoration:none;padding:6px 16px;border-radius:999px;
+  letter-spacing:.06em;transition:color .2s,background .2s;cursor:none;
+}
+.nav-links a:hover,.nav-links a.active{color:var(--white);background:rgba(255,255,255,0.05)}
+.nav-links a.active{color:var(--teal)}
+.nav-right{display:flex;align-items:center;gap:14px}
+.status-pill{
+  background:rgba(45,212,191,0.08);
+  border:1px solid rgba(45,212,191,0.18);
+  color:var(--teal);padding:6px 14px;border-radius:999px;
+  font-size:9px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.12em;
+  display:flex;align-items:center;gap:6px;
+}
+.sdot{width:5px;height:5px;background:var(--teal);border-radius:50%;box-shadow:0 0 8px var(--teal);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.5;transform:scale(1)}50%{opacity:1;transform:scale(1.2)}}
+.avatar{
+  width:34px;height:34px;border-radius:50%;
+  background:linear-gradient(135deg,var(--surface-3),var(--dim));
+  border:1px solid var(--border-1);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--muted);cursor:none;
+  transition:border-color .2s;
+}
+.avatar:hover{border-color:rgba(45,212,191,0.4)}
+
+/* ── HERO STRIP ───────────────────────────────────────────── */
+.hero-strip{
+  position:relative;z-index:1;
+  padding:clamp(40px,6vh,72px) clamp(20px,4vw,56px) 0;
+  overflow:hidden;
+}
+.hero-strip::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse 60% 80% at 50% 0%,rgba(45,212,191,0.04),transparent 70%);
+  pointer-events:none;
+}
+.hero-eyebrow{
+  font-size:9px;font-family:var(--mono);letter-spacing:.22em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:14px;
+  display:flex;align-items:center;gap:10px;
+}
+.hero-eyebrow::before{content:'';width:24px;height:.5px;background:var(--dim)}
+.hero-title{
+  font-size:clamp(28px,4vw,48px);font-weight:800;
+  letter-spacing:-.035em;line-height:1.1;margin-bottom:12px;
+}
+.hero-title em{font-style:normal;color:var(--teal)}
+.hero-sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:520px;margin-bottom:32px}
+
+/* ── STATS BAR ────────────────────────────────────────────── */
+.stats-bar{
+  display:flex;gap:0;
+  border:1px solid var(--border-0);
+  border-radius:16px;
+  overflow:hidden;
+  background:rgba(17,24,39,0.6);
+  backdrop-filter:blur(20px);
+  margin-bottom:0;
+  max-width:600px;
+}
+.stat-item{
+  flex:1;padding:16px 20px;
+  border-right:1px solid var(--border-0);
+  text-align:center;
+}
+.stat-item:last-child{border-right:none}
+.stat-num{font-size:20px;font-weight:700;color:var(--white);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.stat-num.gold{color:var(--gold)}
+.stat-num.teal{color:var(--teal)}
+.stat-label{font-size:8px;font-family:var(--mono);color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:3px}
+
+/* ── FILTER BAR ───────────────────────────────────────────── */
+.filter-wrap{
+  position:sticky;top:64px;z-index:90;
+  background:rgba(6,11,24,0.85);
+  backdrop-filter:blur(32px);
+  border-bottom:1px solid var(--border-0);
+  padding:14px clamp(20px,4vw,56px);
+  display:flex;align-items:center;gap:12px;
+  flex-wrap:wrap;
+  transition:top .3s ease;
+}
+nav.scrolled ~ .filter-wrap{top:52px}
+.filter-label{font-size:9px;font-family:var(--mono);color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-right:4px;white-space:nowrap}
+.filter-chips{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+.chip{
+  font-size:9px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  padding:7px 16px;border-radius:999px;
+  border:1px solid var(--border-1);
+  color:var(--muted);background:transparent;
+  cursor:none;transition:all .2s ease;white-space:nowrap;
+}
+.chip:hover{border-color:var(--border-2);color:var(--white);background:var(--glass)}
+.chip.active{background:rgba(45,212,191,0.1);border-color:rgba(45,212,191,0.3);color:var(--teal)}
+.search-wrap{position:relative;margin-left:auto}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);pointer-events:none}
+#search{
+  background:rgba(17,24,39,0.8);border:1px solid var(--border-1);
+  border-radius:999px;padding:7px 14px 7px 34px;
+  color:var(--white);font-size:11px;font-family:var(--mono);
+  outline:none;width:200px;cursor:none;
+  transition:border-color .25s,box-shadow .25s,width .3s ease;
+}
+#search::placeholder{color:var(--muted)}
+#search:focus{border-color:rgba(45,212,191,0.35);box-shadow:0 0 0 3px rgba(45,212,191,0.07);width:260px}
+
+/* ── MAIN LAYOUT ──────────────────────────────────────────── */
+.main{
+  position:relative;z-index:1;
+  padding:40px clamp(20px,4vw,56px) 100px;
+}
+.section-header{
+  display:flex;align-items:flex-end;justify-content:space-between;
+  margin-bottom:28px;
+}
+.section-eyebrow{font-size:9px;font-family:var(--mono);color:var(--muted);letter-spacing:.18em;text-transform:uppercase;margin-bottom:6px}
+.section-title{font-size:clamp(18px,2vw,24px);font-weight:700;letter-spacing:-.02em}
+.count-badge{
+  font-size:9px;font-family:var(--mono);color:var(--muted);
+  background:rgba(255,255,255,0.04);border:1px solid var(--border-0);
+  border-radius:999px;padding:5px 14px;letter-spacing:.1em;
+}
+#count-num{color:var(--teal)}
+
+/* ── GRID ─────────────────────────────────────────────────── */
+.feed-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:20px;
+}
+
+/* ── CARD ─────────────────────────────────────────────────── */
+.item-card{
+  background:rgba(17,24,39,0.7);
+  backdrop-filter:blur(20px);
+  border:1px solid var(--border-0);
+  border-radius:22px;
+  overflow:hidden;
+  position:relative;
+  cursor:none;
+  transition:transform .4s cubic-bezier(.34,1.2,.64,1),border-color .3s,box-shadow .4s;
+  animation:cardin .5s ease both;
+}
+@keyframes cardin{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.item-card::before{
+  content:'';position:absolute;top:0;left:15%;right:15%;height:1px;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);
+  z-index:1;pointer-events:none;
+}
+.item-card:hover{
+  transform:translateY(-6px);
+  border-color:var(--border-1);
+  box-shadow:0 24px 60px rgba(0,0,0,0.45),0 0 0 .5px rgba(45,212,191,0.08);
+}
+.item-card:hover .card-img-wrap::after{opacity:1}
+
+/* Card image area */
+.card-img-wrap{
+  height:186px;
+  position:relative;overflow:hidden;
+  border-bottom:1px solid var(--border-0);
+}
+.card-img-wrap::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 50%,rgba(6,11,24,0.6) 100%);
+  opacity:0;transition:opacity .3s ease;pointer-events:none;
+}
+.card-img-bg{
+  width:100%;height:100%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:52px;
+  transition:transform .4s ease;
+}
+.item-card:hover .card-img-bg{transform:scale(1.04)}
+
+/* Category badge on image */
+.cat-badge{
+  position:absolute;top:12px;left:12px;z-index:2;
+  font-size:8px;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;
+  padding:5px 12px;border-radius:999px;
+  background:rgba(6,11,24,0.8);backdrop-filter:blur(12px);
+  border:1px solid var(--border-1);color:var(--muted);
+}
+/* Verified badge */
+.verified-badge{
+  position:absolute;top:12px;right:12px;z-index:2;
+  font-size:8px;font-family:var(--mono);letter-spacing:.1em;
+  padding:5px 10px;border-radius:999px;
+  background:rgba(45,212,191,0.1);border:1px solid rgba(45,212,191,0.25);
+  color:var(--teal);display:flex;align-items:center;gap:5px;
+}
+.vdot{width:4px;height:4px;border-radius:50%;background:var(--teal)}
+
+/* Card content */
+.card-content{padding:22px 22px 0}
+.item-meta{
+  display:flex;align-items:center;gap:8px;
+  margin-bottom:10px;
+}
+.seller-av{
+  width:22px;height:22px;border-radius:50%;
+  background:var(--surface-3);border:1px solid var(--border-0);
+  font-size:10px;font-weight:700;color:var(--muted);font-family:var(--mono);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.seller-name{font-size:10px;font-family:var(--mono);color:var(--muted);letter-spacing:.04em}
+.meta-sep{width:3px;height:3px;border-radius:50%;background:var(--dim);flex-shrink:0}
+.post-time{font-size:10px;font-family:var(--mono);color:var(--dim);letter-spacing:.04em}
+
+.item-title{font-size:16px;font-weight:600;letter-spacing:-.015em;margin-bottom:7px;line-height:1.3}
+.item-desc{font-size:12px;color:var(--muted);line-height:1.6;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;margin-bottom:18px}
+
+/* Tags */
+.item-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+.tag{
+  font-size:8px;font-family:var(--mono);letter-spacing:.1em;text-transform:uppercase;
+  padding:4px 10px;border-radius:999px;
+  background:rgba(255,255,255,0.04);border:1px solid var(--border-0);
+  color:var(--muted);
+}
+.tag.gold{background:rgba(201,168,76,0.08);border-color:rgba(201,168,76,0.2);color:var(--gold)}
+.tag.teal{background:rgba(45,212,191,0.07);border-color:rgba(45,212,191,0.18);color:var(--teal)}
+
+/* Card footer */
+.card-foot{
+  padding:16px 22px 20px;
+  border-top:1px solid var(--border-0);
+  display:flex;align-items:center;justify-content:space-between;
+  margin-top:4px;
+}
+.price-wrap{}
+.price-ksh{font-size:9px;font-family:var(--mono);color:var(--muted);letter-spacing:.1em;margin-bottom:1px}
+.price-num{font-size:22px;font-weight:700;color:var(--gold);letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+
+.btn-lock{
+  font-size:9px;font-weight:700;font-family:var(--mono);
+  letter-spacing:.16em;text-transform:uppercase;
+  padding:11px 20px;border-radius:12px;border:none;
+  background:linear-gradient(135deg,#B8922A,var(--gold),var(--gold-2));
+  color:#060B18;cursor:none;position:relative;overflow:hidden;
+  transition:transform .2s ease,box-shadow .3s ease;
+  white-space:nowrap;
+}
+.btn-lock::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,0.15),transparent 55%);pointer-events:none}
+.btn-lock::after{
+  content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,0.22),transparent);
+  transform:skewX(-20deg);transition:left .45s ease;
+}
+.btn-lock:hover::after{left:150%}
+.btn-lock:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(201,168,76,0.25)}
+.btn-lock:active{transform:scale(0.97)}
+
+/* ── EMPTY STATE ──────────────────────────────────────────── */
+.empty-state{
+  grid-column:1/-1;
+  text-align:center;padding:80px 20px;
+  display:none;
+}
+.empty-icon{font-size:40px;margin-bottom:16px;opacity:.4}
+.empty-title{font-size:16px;font-weight:600;color:var(--muted);margin-bottom:8px}
+.empty-sub{font-size:12px;font-family:var(--mono);color:var(--dim);letter-spacing:.06em}
+
+/* ── TOAST ────────────────────────────────────────────────── */
+#toast{
+  position:fixed;bottom:36px;left:50%;
+  transform:translateX(-50%) translateY(20px);
+  background:rgba(25,32,52,0.95);
+  backdrop-filter:blur(24px);
+  border:1px solid rgba(45,212,191,0.25);
+  color:var(--teal);
+  padding:14px 28px;border-radius:14px;
+  font-size:11px;font-family:var(--mono);letter-spacing:.08em;
+  opacity:0;pointer-events:none;
+  transition:all .4s cubic-bezier(.34,1.56,.64,1);
+  z-index:9000;
+  box-shadow:0 20px 50px rgba(0,0,0,0.5),0 0 0 .5px rgba(45,212,191,0.1);
+  display:flex;align-items:center;gap:10px;
+  white-space:nowrap;
+}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast .t-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);flex-shrink:0;animation:pulse 1.5s ease-in-out infinite}
+#toast.error{border-color:rgba(248,113,113,0.25);color:var(--error)}
+#toast.error .t-dot{background:var(--error)}
+#toast.success{border-color:rgba(74,222,128,0.25);color:var(--success)}
+#toast.success .t-dot{background:var(--success)}
+
+/* ── BOTTOM NAV ───────────────────────────────────────────── */
+.bottom-nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:200;
+  background:rgba(6,11,24,0.88);
+  backdrop-filter:blur(32px);
+  border-top:1px solid var(--border-0);
+  display:none;
+  padding:10px 24px 20px;
+  gap:0;
+}
+.bn-item{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;
+  font-size:9px;font-family:var(--mono);color:var(--muted);
+  letter-spacing:.08em;text-transform:uppercase;cursor:pointer;
+  padding:8px 0;border-radius:12px;
+  transition:color .2s,background .2s;
+}
+.bn-item.active{color:var(--teal)}
+.bn-icon{font-size:18px;line-height:1}
+
+/* ── REVEAL ANIMATION ─────────────────────────────────────── */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
+.reveal.visible{opacity:1;transform:none}
+
+/* ── RESPONSIVE ───────────────────────────────────────────── */
+@media(max-width:900px){
+  .nav-links{display:none}
+  .filter-wrap{top:52px}
+}
+@media(max-width:640px){
+  body{padding-bottom:80px}
+  .bottom-nav{display:flex}
+  .search-wrap{display:none}
+  #search{width:160px}
+  .hero-strip{padding-top:28px}
+  .stats-bar{max-width:100%}
+  .stat-num{font-size:16px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .item-card{animation:none;opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+
+<div id="cursor"><div class="cdot"></div></div>
+<div id="prog"></div>
+
+<div class="bg-orb bg-orb-1"></div>
+<div class="bg-orb bg-orb-2"></div>
+<div class="bg-orb bg-orb-3"></div>
+
+<div id="preloader">
+  <div class="pre-logo">Milele</div>
+  <div class="pre-track"><div class="pre-fill" id="pre-fill"></div></div>
+</div>
+
+<nav id="nav">
+  <div class="nav-left">
+    <div class="brand">
+      <div class="brand-ring">M</div>
+      <div class="brand-name">MILELE</div>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#" class="active">Marketplace</a></li>
+      <li><a href="#">My Escrow</a></li>
+      <li><a href="#">Transactions</a></li>
+      <li><a href="#">Help</a></li>
+    </ul>
+  </div>
+  <div class="nav-right">
+    <div class="status-pill">
+      <div class="sdot"></div>
+      <span>Escrow Secured</span>
+    </div>
+    <div class="avatar">JN</div>
+  </div>
+</nav>
+
+<div class="filter-wrap" id="filter-wrap">
+  <span class="filter-label">Filter</span>
+  <div class="filter-chips">
+    <button class="chip active" data-cat="all">All Items</button>
+    <button class="chip" data-cat="electronics">Electronics</button>
+    <button class="chip" data-cat="books">Books</button>
+    <button class="chip" data-cat="housing">Housing</button>
+    <button class="chip" data-cat="fashion">Fashion</button>
+    <button class="chip" data-cat="services">Services</button>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="search" placeholder="Search listings…" autocomplete="off"/>
+  </div>
+</div>
+
+<div class="hero-strip">
+  <div class="hero-eyebrow">University of Nairobi · Verified Listings</div>
+  <h1 class="hero-title">Campus <em>Marketplace</em></h1>
+  <p class="hero-sub">Buy and sell with confidence. Every transaction protected by MILELE escrow — your money moves only when you say so.</p>
+  <div class="stats-bar reveal">
+    <div class="stat-item">
+      <div class="stat-num teal" id="live-count">0</div>
+      <div class="stat-label">Active Listings</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num gold">KSh 2.4B</div>
+      <div class="stat-label">Secured Total</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-num">100%</div>
+      <div class="stat-label">Insured</div>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="section-header reveal">
+    <div>
+      <div class="section-eyebrow">Live Feed</div>
+      <div class="section-title">Recent Listings</div>
+    </div>
+    <div class="count-badge"><span id="count-num">0</span> items shown</div>
+  </div>
+
+  <div class="feed-grid" id="feed-grid">
+    <div class="empty-state" id="empty">
+      <div class="empty-icon">◎</div>
+      <div class="empty-title">Loading Ledger...</div>
+      <div class="empty-sub">Connecting to MILELE Database</div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"><div class="t-dot"></div><span id="toast-msg">Message</span></div>
+
+<div class="bottom-nav">
+  <div class="bn-item active"><div class="bn-icon">⊞</div>Feed</div>
+  <div class="bn-item"><div class="bn-icon">◈</div>Escrow</div>
+  <div class="bn-item"><div class="bn-icon">⊕</div>Sell</div>
+  <div class="bn-item"><div class="bn-icon">◎</div>Profile</div>
+</div>
+
+<script>
+/* ── DATA: LIVE FETCH WITH CACHE BUSTER ──────────────────────── */
+let LISTINGS = []; // Start empty, fill from DB
+
+async function fetchRealListings() {
+    try {
+        // Added ?nocache= timestamp to force the browser to skip ghost data
+        const response = await fetch('http://localhost/MILELE/backend/api/marketplace.php?nocache=' + new Date().getTime());
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            // Map the raw DB columns into the beautiful frontend format
+            LISTINGS = data.data.map(item => {
+                const descLower = item.description.toLowerCase();
+                const titleLower = item.title.toLowerCase();
+                
+                // Smart categorization based on text
+                let mappedCat = 'electronics';
+                let mappedEmoji = '📦';
+                
+                if (descLower.includes('book') || titleLower.includes('book')) { mappedCat = 'books'; mappedEmoji = '📚'; }
+                else if (descLower.includes('room') || descLower.includes('hostel')) { mappedCat = 'housing'; mappedEmoji = '🏠'; }
+                else if (descLower.includes('shoe') || descLower.includes('shirt') || titleLower.includes('nike')) { mappedCat = 'fashion'; mappedEmoji = '👟'; }
+                else if (descLower.includes('cv') || titleLower.includes('edit')) { mappedCat = 'services'; mappedEmoji = '📄'; }
+                else if (descLower.includes('mac') || titleLower.includes('pc') || titleLower.includes('phone')) { mappedEmoji = '💻'; }
+
+                return {
+                    // FIX: Treat UUID as a string, do NOT parse as integer
+                    id: item.listing_id,
+                    title: item.title,
+                    desc: item.description,
+                    price: parseFloat(item.price),
+                    cat: mappedCat,
+                    emoji: mappedEmoji,
+                    seller: 'Verified Student',
+                    initials: 'UoN',
+                    time: 'Just now',
+                    tags: ['Protected', 'Escrow Ready'],
+                    verified: true
+                };
+            });
+            
+            // Update the live counter header dynamically
+            animCount(document.getElementById('live-count'), LISTINGS.length);
+            
+            // Render the live database items onto the grid
+            renderCards();
+        } else {
+            showToast('System Error: Could not read ledger.', 'error');
+            document.getElementById('empty').innerHTML = `<div class="empty-title">Database Error</div><div class="empty-sub">${data.message}</div>`;
+        }
+    } catch (error) {
+        showToast('Network Error: Servers offline.', 'error');
+        document.getElementById('empty').innerHTML = `<div class="empty-title">Servers Offline</div><div class="empty-sub">Please check your XAMPP connection.</div>`;
+        console.error("DB Fetch Error:", error);
+    }
+}
+
+/* Cat background colors */
+const CAT_BG = {
+  electronics:'linear-gradient(145deg,#0D1829,#0A2040)',
+  books:'linear-gradient(145deg,#0D1520,#0A1830)',
+  housing:'linear-gradient(145deg,#0D1A14,#0A2018)',
+  fashion:'linear-gradient(145deg,#1A0D18,#200A1A)',
+  services:'linear-gradient(145deg,#1A160D,#201A0A)',
+  all:'linear-gradient(145deg,#111827,#0C1220)',
+};
+
+let activeFilter = 'all';
+let searchQuery = '';
+
+/* ── RENDER ──────────────────────────────────────────────────── */
+function renderCards(){
+  const grid = document.getElementById('feed-grid');
+  const empty = document.getElementById('empty');
+  const countEl = document.getElementById('count-num');
+
+  let filtered = LISTINGS.filter(item => {
+    const catMatch = activeFilter === 'all' || item.cat === activeFilter;
+    const q = searchQuery.toLowerCase();
+    const searchMatch = !q || item.title.toLowerCase().includes(q) || item.desc.toLowerCase().includes(q) || item.cat.toLowerCase().includes(q);
+    return catMatch && searchMatch;
+  });
+
+  // Remove all cards except empty state
+  Array.from(grid.children).forEach(c => { if(c.id !== 'empty') c.remove(); });
+
+  if(filtered.length === 0) {
+      empty.style.display = 'block';
+      empty.innerHTML = `<div class="empty-icon">◎</div><div class="empty-title">No listings found</div><div class="empty-sub">Try a different filter or search term</div>`;
+  } else {
+      empty.style.display = 'none';
+  }
+  
+  countEl.textContent = filtered.length;
+
+  filtered.forEach((item, i) => {
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.style.animationDelay = (i * 60) + 'ms';
+    card.dataset.id = item.id;
+
+    const bgGrad = CAT_BG[item.cat] || CAT_BG.all;
+    const tagsHtml = item.tags.map((t,ti) =>
+      `<span class="tag ${ti===0?'teal':ti===1?'gold':''}">${t}</span>`
+    ).join('');
+    const verifiedHtml = item.verified
+      ? `<div class="verified-badge"><div class="vdot"></div>Verified</div>`
+      : '';
+
+    card.innerHTML = `
+      <div class="card-img-wrap">
+        <div class="card-img-bg" style="background:${bgGrad}">${item.emoji}</div>
+        <div class="cat-badge">${item.cat}</div>
+        ${verifiedHtml}
+      </div>
+      <div class="card-content">
+        <div class="item-meta">
+          <div class="seller-av">${item.initials}</div>
+          <span class="seller-name">${item.seller}</span>
+          <div class="meta-sep"></div>
+          <span class="post-time">${item.time}</span>
+        </div>
+        <div class="item-title">${item.title}</div>
+        <div class="item-desc">${item.desc}</div>
+        <div class="item-tags">${tagsHtml}</div>
+      </div>
+      <div class="card-foot">
+        <div class="price-wrap">
+          <div class="price-ksh">KSH</div>
+          <div class="price-num">${item.price.toLocaleString()}</div>
+        </div>
+        <button class="btn-lock" data-id="${item.id}">Lock Item →</button>
+      </div>
+    `;
+
+    grid.insertBefore(card, empty);
+
+    // Add cursor hover listeners
+    addHover(card.querySelector('.btn-lock'));
+    addHover(card);
+  });
+}
+
+/* ── FILTERS ──────────────────────────────────────────────────── */
+document.querySelectorAll('.chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeFilter = chip.dataset.cat;
+    renderCards();
+    showToast(`Showing: ${chip.textContent}`);
+  });
+  addHover(chip);
+});
+
+document.getElementById('search').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  renderCards();
+});
+
+/* ── LOCK BUTTON: SAFARICOM STK TRIGGER ───────────────────────── */
+document.getElementById('feed-grid').addEventListener('click', async e => {
+  const btn = e.target.closest('.btn-lock');
+  if(!btn) return;
+  
+  // FIX: Read the ID as a string to preserve the full UUID
+  const id = btn.dataset.id;
+  const item = LISTINGS.find(l => l.id === id);
+  if(!item) return;
+
+  const originalText = btn.innerHTML;
+  btn.textContent = 'Locking...';
+  btn.style.pointerEvents = 'none';
+  
+  showToast(`Requesting Safaricom STK for ${item.title}...`);
+
+  try {
+      const response = await fetch('http://localhost/MILELE/backend/api/initiate_escrow.php', {
+          method: 'POST',
+          headers: {
+              'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ listing_id: id })
+      });
+      
+      const data = await response.json();
+
+      if (data.status === 'success') {
+          btn.textContent = 'Locked ✓';
+          btn.style.background = 'linear-gradient(135deg,#166534,#15803d)';
+          btn.style.color = '#d1fae5';
+          showToast('Check your phone! M-Pesa STK sent.', 'success');
+          console.log("TESTING - Handshake OTP:", data.escrow_details.otp_code);
+      } else {
+          btn.innerHTML = originalText;
+          btn.style.pointerEvents = 'auto';
+          showToast(data.message, 'error');
+      }
+  } catch (error) {
+      btn.innerHTML = originalText;
+      btn.style.pointerEvents = 'auto';
+      showToast('Gateway timeout. STK failed.', 'error');
+  }
+});
+
+/* ── TOAST ──────────────────────────────────────────────────────── */
+let toastTimer;
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  const m = document.getElementById('toast-msg');
+  t.className = type ? `show ${type}` : 'show';
+  m.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = type; }, 3000);
+}
+
+/* ── CURSOR ──────────────────────────────────────────────────────── */
+const cur = document.getElementById('cursor');
+let cx=innerWidth/2, cy=innerHeight/2, tx=cx, ty=cy;
+document.addEventListener('mousemove', e => { tx=e.clientX; ty=e.clientY; });
+document.addEventListener('mousedown', () => cur.classList.add('click'));
+document.addEventListener('mouseup', () => cur.classList.remove('click'));
+function addHover(el){
+  if(!el) return;
+  el.addEventListener('mouseenter', () => cur.classList.add('hover'));
+  el.addEventListener('mouseleave', () => cur.classList.remove('hover'));
+}
+['#nav a','#nav .avatar','.brand','.status-pill','#search'].forEach(sel => {
+  document.querySelectorAll(sel).forEach(el => addHover(el));
+});
+(function lerp(){
+  cx+=(tx-cx)*.1; cy+=(ty-cy)*.1;
+  cur.style.left=cx+'px'; cur.style.top=cy+'px';
+  requestAnimationFrame(lerp);
+})();
+
+/* ── SCROLL ──────────────────────────────────────────────────────── */
+const nav = document.getElementById('nav');
+const prog = document.getElementById('prog');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', scrollY > 60);
+  const pct = scrollY / (document.documentElement.scrollHeight - innerHeight) * 100;
+  prog.style.width = pct + '%';
+});
+
+/* ── REVEAL ──────────────────────────────────────────────────────── */
+const ro = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1 });
+document.querySelectorAll('.reveal').forEach(el => ro.observe(el));
+
+/* ── PRELOADER ──────────────────────────────────────────────────── */
+window.addEventListener('load', () => {
+  const fill = document.getElementById('pre-fill');
+  const loader = document.getElementById('preloader');
+  requestAnimationFrame(() => {
+    fill.style.width = '100%';
+    setTimeout(() => {
+      loader.style.opacity = '0';
+      setTimeout(() => loader.style.display = 'none', 600);
+    }, 1500);
+  });
+});
+
+/* ── LIVE COUNT ANIMATION ───────────────────────────────────────── */
+function animCount(el, target, duration=1200){
+  let start=null, from=0;
+  function step(ts){
+    if(!start) start=ts;
+    const p = Math.min((ts-start)/duration,1);
+    el.textContent = Math.round(from + (target-from) * p);
+    if(p<1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* ── INIT ────────────────────────────────────────────────────────── */
+fetchRealListings();
+</script>
+</body>
+</html>
