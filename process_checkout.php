@@ -1,84 +1,124 @@
 <?php
-// MILELE - Secure PIN Verification & Live B2C Payout Engine
+// MILELE - Premium Checkout Processor & STK Push Initiator
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-if (!isset($_SESSION['user_id']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
 require 'db.php';
-require 'backend/api/MpesaGateway.php'; // Bring in the Master Engine
+require 'backend/api/MpesaGateway.php';
 
-$seller_id = $_SESSION['user_id'];
-$transaction_id = filter_input(INPUT_POST, 'transaction_id', FILTER_VALIDATE_INT);
-$submitted_pin = filter_input(INPUT_POST, 'escrow_pin', FILTER_SANITIZE_SPECIAL_CHARS);
+$user_id = $_SESSION['user_id'];
+$checkout_id = ''; 
 
-if (!$transaction_id || empty($submitted_pin)) {
-    $_SESSION['payout_error'] = "Invalid data submitted.";
-    header("Location: payout.php");
-    exit();
-}
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $listing_id = filter_input(INPUT_POST, 'listing_id', FILTER_VALIDATE_INT);
+    $phone_number = filter_input(INPUT_POST, 'phone_number', FILTER_SANITIZE_SPECIAL_CHARS);
 
-try {
-    // 1. Fetch Transaction & Seller details (We need the seller's phone number!)
-    $stmt = $pdo->prepare("
-        SELECT t.transaction_id, t.escrow_pin, t.transaction_status, t.total_amount, u.phone_number 
-        FROM escrow_transactions t
-        JOIN users u ON t.seller_id = u.user_id
-        WHERE t.transaction_id = :tx_id AND t.seller_id = :seller
-    ");
-    $stmt->execute([':tx_id' => $transaction_id, ':seller' => $seller_id]);
-    $tx = $stmt->fetch();
-
-    if (!$tx) {
-        $_SESSION['payout_error'] = "Transaction not found or unauthorized.";
-        header("Location: payout.php");
-        exit();
+    if (!$listing_id || empty($phone_number)) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>Invalid request data. Please try again.</div>");
     }
 
-    if ($tx['transaction_status'] !== 'funded') {
-        $_SESSION['payout_error'] = "These funds have already been claimed or are unavailable.";
-        header("Location: payout.php");
-        exit();
-    }
+    try {
+        $stmt = $pdo->prepare("SELECT title, price, seller_id FROM listings WHERE listing_id = :id AND listing_status = 'active'");
+        $stmt->execute([':id' => $listing_id]);
+        $item = $stmt->fetch();
 
-    // 2. The Final Verification Gate
-    if ($submitted_pin === $tx['escrow_pin']) {
-        
-        // 3. Initiate the live M-Pesa B2C Payout!
+        if (!$item) {
+            die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>This item is no longer available.</div>");
+        }
+
+        if ($item['seller_id'] == $user_id) {
+            die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>You cannot buy your own item.</div>");
+        }
+
         $mpesa = new MpesaGateway();
-        
-        // Use a default test number if the user hasn't set one in their profile yet
-        $seller_phone = !empty($tx['phone_number']) ? $tx['phone_number'] : '0708374149'; 
-        
-        $response = $mpesa->b2cPayment($seller_phone, $tx['total_amount'], $transaction_id);
+        $reference = "MIL" . $listing_id;
+        $description = "Escrow Pay";
+
+        // Trigger STK Push to the Buyer's Phone
+        $response = $mpesa->stkPush($phone_number, $item['price'], $reference, $description);
 
         if (isset($response['ResponseCode']) && $response['ResponseCode'] == '0') {
-            // Safaricom accepted the command. Mark as 'released' in the vault.
-            $update = $pdo->prepare("UPDATE escrow_transactions SET transaction_status = 'released' WHERE transaction_id = :tx_id");
-            $update->execute([':tx_id' => $transaction_id]);
+            $checkout_id = $response['CheckoutRequestID'];
 
-            // Add +1 to the Seller's Reputation
-            $rep_update = $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller");
-            $rep_update->execute([':seller' => $seller_id]);
+            $stmt_tx = $pdo->prepare("
+                INSERT INTO escrow_transactions (buyer_id, seller_id, listing_id, total_amount, transaction_status, mpesa_checkout_id, created_at) 
+                VALUES (:buyer, :seller, :listing, :amount, 'pending', :checkout, NOW())
+            ");
+            $stmt_tx->execute([
+                ':buyer' => $user_id,
+                ':seller' => $item['seller_id'],
+                ':listing' => $listing_id,
+                ':amount' => $item['price'],
+                ':checkout' => $checkout_id
+            ]);
 
-            $_SESSION['payout_success'] = "PIN Verified! Safaricom is processing your payout directly to " . htmlspecialchars($seller_phone) . ".";
         } else {
-            // Daraja structural failure
-            $error_msg = $response['errorMessage'] ?? "Connection to Safaricom B2C failed.";
-            $_SESSION['payout_error'] = "Bank Error: " . htmlspecialchars($error_msg);
+            $error_msg = $response['ResponseDescription'] ?? "Connection to Safaricom API failed.";
+            die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>M-Pesa Gateway Error: " . htmlspecialchars($error_msg) . "</div>");
         }
-        
-    } else {
-        $_SESSION['payout_error'] = "Incorrect Handover PIN. Please ask the buyer for the correct code.";
+
+    } catch (PDOException $e) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>Database Error: " . htmlspecialchars($e->getMessage()) . "</div>");
     }
-
-} catch (PDOException $e) {
-    $_SESSION['payout_error'] = "System error processing payout.";
+} else {
+    header("Location: index.php");
+    exit();
 }
-
-header("Location: payout.php");
-exit();
 ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Processing Payment | MILELE</title>
+    <style>
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+        .payment-box { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 40px; border-radius: 32px; max-width: 450px; width: 100%; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.4); }
+        .pulse-icon { font-size: 3.5rem; margin-bottom: 20px; display: inline-block; animation: pulse 2s infinite ease-in-out; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 0.6; } 50% { transform: scale(1.1); opacity: 1; filter: drop-shadow(0 0 15px rgba(45,212,191,0.6)); } 100% { transform: scale(1); opacity: 0.6; } }
+        h2 { margin: 0 0 10px 0; font-size: 1.6rem; color: #fff; }
+        p { color: #888; font-size: 0.95rem; line-height: 1.6; margin: 0 0 30px 0; }
+        .highlight { color: #2DD4BF; font-weight: bold; }
+        .loader-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden; margin-bottom: 30px; }
+        .loader-progress { width: 40%; height: 100%; background: #2DD4BF; border-radius: 2px; animation: slide 1.5s infinite linear; }
+        @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+        .btn-profile { display: block; padding: 14px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; text-decoration: none; font-weight: bold; font-size: 0.95rem; transition: 0.3s; }
+        .btn-profile:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+<div class="payment-box">
+    <div class="pulse-icon">📱</div>
+    <h2>Check Your Phone</h2>
+    <p>We have sent an M-Pesa STK push prompt to <span class="highlight"><?php echo htmlspecialchars($phone_number); ?></span>.<br><br>Please enter your <span class="highlight">M-Pesa PIN</span> on your device to authorize the secure escrow deposit of <span class="highlight">KES <?php echo number_format($item['price'], 2); ?></span>.</p>
+    <div class="loader-bar"><div class="loader-progress"></div></div>
+    <a href="profile.php" class="btn-profile">Cancel & Return</a>
+</div>
+
+<script>
+    const checkoutId = "<?php echo htmlspecialchars($checkout_id); ?>";
+    if (checkoutId !== '') {
+        const radar = setInterval(() => {
+            fetch('check_status.php?checkout_id=' + checkoutId)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'funded') {
+                        clearInterval(radar);
+                        window.location.href = 'escrow_success.php?checkout=' + checkoutId;
+                    } else if (data.status === 'failed') {
+                        clearInterval(radar);
+                        alert("Payment was cancelled or failed. Please try again.");
+                        window.location.href = 'index.php';
+                    }
+                })
+                .catch(err => console.error("Radar interference:", err));
+        }, 3000); 
+    }
+</script>
+</body>
+</html>

@@ -1,5 +1,5 @@
 <?php
-// MILELE - Secure PIN Verification & Live B2C Payout Engine (Bulletproof V2)
+// MILELE - Secure PIN Verification & Live B2C Payout Engine
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,19 +13,18 @@ require 'backend/api/MpesaGateway.php';
 
 $seller_id = $_SESSION['user_id'];
 
-// Bypassing filter_input to directly and forcefully grab the raw POST data
+// Grab data directly from the POST request
 $transaction_id = isset($_POST['transaction_id']) ? (int)$_POST['transaction_id'] : 0;
 $submitted_pin = isset($_POST['escrow_pin']) ? trim(htmlspecialchars($_POST['escrow_pin'])) : '';
 
-// Diagnostic trap: Tell us exactly what is missing if it fails
 if ($transaction_id === 0 || empty($submitted_pin)) {
-    $_SESSION['payout_error'] = "Data Error: Missing Transaction ID (" . $transaction_id . ") or PIN.";
+    $_SESSION['payout_error'] = "Data Error: Missing Transaction ID or PIN.";
     header("Location: payout.php");
     exit();
 }
 
 try {
-    // 1. Fetch Transaction & Seller details
+    // Fetch Transaction & Seller details
     $stmt = $pdo->prepare("
         SELECT t.transaction_id, t.escrow_pin, t.transaction_status, t.total_amount, u.phone_number 
         FROM escrow_transactions t
@@ -47,18 +46,17 @@ try {
         exit();
     }
 
-    // 2. The Final Verification Gate
+    // Verify the Handover PIN
     if ($submitted_pin === $tx['escrow_pin']) {
         
-        // 3. Initiate the live M-Pesa B2C Payout!
         $mpesa = new MpesaGateway();
-        
         $seller_phone = !empty($tx['phone_number']) ? $tx['phone_number'] : '0708374149'; 
         
+        // Trigger B2C Payout to the Seller's Phone
         $response = $mpesa->b2cPayment($seller_phone, $tx['total_amount'], $transaction_id);
 
         if (isset($response['ResponseCode']) && $response['ResponseCode'] == '0') {
-            // Success! Release the funds.
+            // Success! Release the funds in the database.
             $update = $pdo->prepare("UPDATE escrow_transactions SET transaction_status = 'released' WHERE transaction_id = :tx_id");
             $update->execute([':tx_id' => $transaction_id]);
 
