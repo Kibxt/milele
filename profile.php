@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Profile Dashboard (V3 with Custom Modals)
+// MILELE - Premium Profile Dashboard (V4 Complete Dashboard)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,14 +13,17 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
+    // 1. User Details
     $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
+    // 2. Inventory
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
 
+    // 3. Purchase History
     $stmt_history = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as seller_name 
         FROM escrow_transactions t
@@ -109,6 +112,7 @@ try {
         <h1>My Profile</h1>
         <div class="nav-buttons">
             <a href="index.php" class="btn-glass btn-accent">← Return to Market</a>
+            <a href="payout.php" class="btn-glass" style="background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.2);">Payouts</a>
             <a href="logout.php" class="btn-glass btn-danger">Logout</a>
         </div>
     </div>
@@ -159,6 +163,7 @@ try {
                         <th>Amount Paid</th>
                         <th>Vault Code (PIN)</th>
                         <th>Status</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -182,6 +187,11 @@ try {
                                     <span class="status-badge status-released">Released</span>
                                 <?php endif; ?>
                             </td>
+                            <td>
+                                <?php if ($deal['transaction_status'] === 'funded'): ?>
+                                    <button onclick="openGuideModal()" style="background:none; border:1px solid rgba(255,255,255,0.2); color:#ccc; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">ℹ️ Guide</button>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -202,25 +212,55 @@ try {
     </div>
 </div>
 
+<div class="modal-overlay" id="guideModal">
+    <div class="modal-box" style="text-align: left;">
+        <div class="modal-title" style="text-align: center; color: #2DD4BF;">How Escrow Works</div>
+        <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot access it until you provide your 4-digit PIN.</p>
+        
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches the listing exactly.</span>
+        </div>
+        <div style="margin-bottom: 25px;">
+            <strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your Vault PIN when you have the item in your hands. This releases the money to them.</span>
+        </div>
+        
+        <button onclick="closeGuideModal()" class="btn-cancel" style="width: 100%;">Understood</button>
+    </div>
+</div>
+
 <script>
-    const modal = document.getElementById('deleteModal');
+    // Delete Modal Logic
+    const deleteModal = document.getElementById('deleteModal');
     const confirmBtn = document.getElementById('confirmDeleteBtn');
 
     function openModal(listingId) {
-        // Set the dynamic link for the specific item
         confirmBtn.href = "delete_listing.php?id=" + listingId;
-        modal.classList.add('active');
+        deleteModal.classList.add('active');
     }
 
     function closeModal() {
-        modal.classList.remove('active');
-        // Clear link just in case
+        deleteModal.classList.remove('active');
         setTimeout(() => confirmBtn.href = "#", 300);
     }
 
-    // Close modal if user clicks the dark background outside the box
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) closeModal();
+    // Guide Modal Logic
+    const guideModal = document.getElementById('guideModal');
+    
+    function openGuideModal() {
+        guideModal.classList.add('active');
+    }
+    
+    function closeGuideModal() {
+        guideModal.classList.remove('active');
+    }
+
+    // Close modals if clicking outside
+    window.addEventListener('click', function(e) {
+        if (e.target === deleteModal) closeModal();
+        if (e.target === guideModal) closeGuideModal();
     });
 </script>
 
