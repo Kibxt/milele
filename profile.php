@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Profile Dashboard (V2 with History & Controls)
+// MILELE - Premium Profile Dashboard (V3 with Custom Modals)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,17 +13,14 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
-    // 1. Fetch User Details
     $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
-    // 2. Fetch User's Active Listings (Inventory)
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
 
-    // 3. Fetch User's Purchase History & Active Vault Codes
     $stmt_history = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as seller_name 
         FROM escrow_transactions t
@@ -46,7 +43,7 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile | MILELE</title>
     <style>
-        /* Ultra-Premium Glass Aesthetic */
+        /* Shared Glass Aesthetic */
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
         .container { max-width: 900px; margin: 0 auto; }
         
@@ -69,7 +66,6 @@ try {
 
         .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; margin-top: 40px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         
-        /* Listings Grid with Controls */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
         .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; display: flex; flex-direction: column; }
         .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
@@ -79,10 +75,9 @@ try {
         .card-controls { display: flex; gap: 10px; margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
         .btn-edit { flex: 1; text-align: center; padding: 8px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 8px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
         .btn-edit:hover { background: #2DD4BF; color: #000; }
-        .btn-delete { flex: 1; text-align: center; padding: 8px; background: rgba(248,113,113,0.1); color: #F87171; border-radius: 8px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
+        .btn-delete { flex: 1; text-align: center; padding: 8px; background: rgba(248,113,113,0.1); color: #F87171; border-radius: 8px; border: none; cursor: pointer; font-size: 0.85rem; transition: 0.2s; font-family: inherit;}
         .btn-delete:hover { background: #F87171; color: #000; }
 
-        /* History Table */
         .history-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; }
         th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -91,6 +86,20 @@ try {
         .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; }
         .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; }
         .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
+
+        /* Premium Custom Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
+        .modal-overlay.active .modal-box { transform: translateY(0); }
+        .modal-icon { font-size: 3rem; margin-bottom: 15px; }
+        .modal-title { font-size: 1.5rem; margin-bottom: 10px; color: #fff; }
+        .modal-text { color: #888; margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5; }
+        .modal-actions { display: flex; gap: 15px; }
+        .btn-cancel { flex: 1; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-cancel:hover { background: rgba(255,255,255,0.1); }
+        .btn-confirm-del { flex: 1; padding: 12px; background: #F87171; color: #000; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; text-decoration: none; transition: 0.2s; }
+        .btn-confirm-del:hover { background: #fff; }
     </style>
 </head>
 <body>
@@ -127,8 +136,8 @@ try {
                     <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
                     <div class="card-controls">
-                        <a href="edit_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-edit">Edit Item</a>
-                        <a href="delete_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-delete" onclick="return confirm('Are you sure you want to remove this item from the market?');">Remove</a>
+                        <a href="edit_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-edit">Edit</a>
+                        <button onclick="openModal(<?php echo $item['listing_id']; ?>)" class="btn-delete">Remove</button>
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -180,6 +189,40 @@ try {
         <?php endif; ?>
     </div>
 </div>
+
+<div class="modal-overlay" id="deleteModal">
+    <div class="modal-box">
+        <div class="modal-icon">🗑️</div>
+        <div class="modal-title">Remove Item?</div>
+        <div class="modal-text">This will hide your item from the global marketplace. Past receipts will be preserved. This action cannot be undone.</div>
+        <div class="modal-actions">
+            <button onclick="closeModal()" class="btn-cancel">Cancel</button>
+            <a href="#" id="confirmDeleteBtn" class="btn-confirm-del">Yes, Remove it</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const modal = document.getElementById('deleteModal');
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+
+    function openModal(listingId) {
+        // Set the dynamic link for the specific item
+        confirmBtn.href = "delete_listing.php?id=" + listingId;
+        modal.classList.add('active');
+    }
+
+    function closeModal() {
+        modal.classList.remove('active');
+        // Clear link just in case
+        setTimeout(() => confirmBtn.href = "#", 300);
+    }
+
+    // Close modal if user clicks the dark background outside the box
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) closeModal();
+    });
+</script>
 
 </body>
 </html>
