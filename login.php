@@ -1,6 +1,11 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
+// MILELE - Premium Login Interface
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+
+// If they are already logged in, send them straight to the feed
+if (isset($_SESSION['user_id'])) {
+    header("Location: index.php");
+    exit();
 }
 ?>
 <!DOCTYPE html>
@@ -8,109 +13,59 @@ if (session_status() === PHP_SESSION_NONE) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log In — MILELE Campus</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Login | MILELE</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        /* Ultra-Premium Glass Aesthetic */
+        :root { --accent: #2DD4BF; --bg: #000; --glass: rgba(255,255,255,0.03); --border: rgba(255,255,255,0.08); }
+        body { background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; margin: 0; display: flex; justify-content: center; align-items: center; background-image: radial-gradient(circle at 15% 50%, rgba(45, 212, 191, 0.08), transparent 25%), radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.03), transparent 25%); }
         
-        body {
-            font-family: 'Plus Jakarta Sans', sans-serif;
-            background-color: #0A0A0C;
-            overflow-x: hidden;
-        }
-
-        .glass-panel {
-            background: rgba(18, 18, 22, 0.7);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        .glass-input {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.3s ease;
-        }
-
-        .glass-input:focus {
-            background: rgba(255, 255, 255, 0.06);
-            border-color: rgba(255, 255, 255, 0.3);
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.03);
-            outline: none;
-        }
+        .auth-container { background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--border); padding: 40px; border-radius: 32px; width: 100%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.4); text-align: center; }
+        
+        .logo { font-size: 2rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; color: #fff; }
+        .logo span { color: var(--accent); }
+        .subtitle { color: #888; font-size: 0.9rem; margin-bottom: 30px; }
+        
+        .error-msg { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: #F87171; padding: 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; }
+        
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; color: #888; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .input-group input { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: #fff; padding: 14px 16px; border-radius: 16px; font-size: 1rem; transition: 0.3s; outline: none; box-sizing: border-box; }
+        .input-group input:focus { border-color: var(--accent); background: rgba(255,255,255,0.08); box-shadow: 0 0 0 4px rgba(45,212,191,0.1); }
+        
+        .btn-primary { width: 100%; background: var(--accent); color: #000; border: none; padding: 16px; border-radius: 16px; font-weight: bold; font-size: 1.05rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        .btn-primary:hover { background: #fff; transform: translateY(-2px); }
+        
+        .switch-link { display: block; margin-top: 25px; color: #888; font-size: 0.9rem; text-decoration: none; transition: 0.2s; }
+        .switch-link span { color: #fff; font-weight: bold; }
+        .switch-link:hover span { color: var(--accent); }
     </style>
 </head>
-<body class="text-gray-100 min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
+<body>
 
-    <div class="absolute top-0 right-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none"></div>
-    <div class="absolute bottom-0 left-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="auth-container">
+    <div class="logo">MILE<span>LE</span></div>
+    <div class="subtitle">Access the Campus Marketplace</div>
 
-    <div class="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 glass-panel rounded-3xl overflow-hidden shadow-2xl min-h-[600px]">
+    <?php if(isset($_SESSION['error_msg'])): ?>
+        <div class="error-msg"><?php echo htmlspecialchars($_SESSION['error_msg']); unset($_SESSION['error_msg']); ?></div>
+    <?php endif; ?>
+
+    <form action="login_process.php" method="POST">
+        <div class="input-group">
+            <label>Student Email</label>
+            <input type="email" name="email" required placeholder="you@student.ac.ke">
+        </div>
         
-        <div class="hidden lg:flex lg:col-span-5 relative bg-neutral-900 flex-col justify-between p-8 border-r border-white/5 overflow-hidden">
-            <div class="absolute inset-0 bg-gradient-to-t from-[#0A0A0C] via-transparent to-black/50 z-10"></div>
-            <div class="absolute inset-0 opacity-40 bg-cover bg-center transition-transform duration-1000 hover:scale-105" style="background-image: url('https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&q=80&w=800');"></div>
-
-            <div class="relative z-20">
-                <span class="text-xs font-semibold tracking-widest text-white/50 uppercase">Welcome Back</span>
-            </div>
-
-            <div class="relative z-20 mt-auto">
-                <h1 class="text-3xl font-bold tracking-tight text-white mb-2">MILELE</h1>
-                <p class="text-sm text-gray-300 leading-relaxed">Pick up right where you left off. Access your escrow vault, messages, and campus deals.</p>
-            </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" name="password" required placeholder="••••••••">
         </div>
 
-        <div class="col-span-1 lg:col-span-7 flex flex-col justify-center p-6 sm:p-10 lg:p-12">
-            
-            <div class="mb-8">
-                <h2 class="text-2xl font-semibold tracking-tight text-white mb-1">Log In</h2>
-                <p class="text-sm text-gray-400">Enter your student email and password to continue.</p>
-            </div>
+        <button type="submit" class="btn-primary">Sign In</button>
+    </form>
 
-            <?php if (isset($_SESSION['error_msg'])): ?>
-                <div class="mb-6 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-sm text-red-400 flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                    <?php 
-                        echo htmlspecialchars($_SESSION['error_msg']); 
-                        unset($_SESSION['error_msg']); 
-                    ?>
-                </div>
-            <?php endif; ?>
-
-            <form action="login_process.php" method="POST" class="space-y-6">
-                
-                <div>
-                    <label class="block text-xs font-medium uppercase tracking-wider text-gray-400 mb-2">Student Email</label>
-                    <input type="email" name="email" required placeholder="name@student.university.ac.ke" 
-                           class="w-full px-4 py-3 rounded-xl glass-input text-sm text-white placeholder-gray-600 focus:ring-0">
-                </div>
-
-                <div>
-                    <div class="flex justify-between items-center mb-2">
-                        <label class="block text-xs font-medium uppercase tracking-wider text-gray-400">Password</label>
-                        <a href="#" class="text-xs text-blue-400 hover:text-blue-300 transition-colors">Forgot it?</a>
-                    </div>
-                    <input type="password" name="password" required placeholder="••••••••" 
-                           class="w-full px-4 py-3 rounded-xl glass-input text-sm text-white placeholder-gray-600 focus:ring-0">
-                </div>
-
-                <button type="submit" 
-                        class="w-full mt-2 bg-white text-black font-semibold text-sm py-3.5 px-4 rounded-xl shadow-lg hover:bg-gray-100 transition-all duration-200 active:scale-[0.98]">
-                    Access Account
-                </button>
-
-            </form>
-
-            <div class="mt-8 pt-6 border-t border-white/5 text-center">
-                <p class="text-xs text-gray-400">
-                    New to MILELE? 
-                    <a href="register.php" class="text-white font-medium hover:underline ml-1">Create an account</a>
-                </p>
-            </div>
-
-        </div>
-    </div>
+    <a href="register.php" class="switch-link">Don't have an account? <span>Create one</span></a>
+</div>
 
 </body>
 </html>
