@@ -1,5 +1,5 @@
 <?php
-// MILELE - Secure Campus Inbox
+// MILELE - Premium Inbox Hub
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -8,168 +8,143 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+require 'db.php';
+
 $user_id = $_SESSION['user_id'];
 
-// Database Connection
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    die("System Offline.");
-}
-
-// Fetch the absolute latest message for every distinct conversation the user is part of
-$sql = "SELECT m.*, 
-        u_other.full_name AS other_user_name, 
-        l.title AS listing_title, 
-        l.file_path AS listing_image
-        FROM messages m
-        JOIN users u_other ON (u_other.user_id = CASE WHEN m.sender_id = :uid THEN m.receiver_id ELSE m.sender_id END)
-        LEFT JOIN listings l ON m.listing_id = l.listing_id
-        WHERE m.message_id IN (
-            SELECT MAX(message_id) 
+    // Advanced Cloud SQL to fetch active chat threads, latest messages, and unread counts
+    $sql = "
+        SELECT 
+            t.listing_id, 
+            t.partner_id, 
+            u.full_name as partner_name, 
+            l.title as item_title, 
+            m.message_text as last_message, 
+            m.created_at as last_message_time,
+            m.sender_id as last_sender,
+            (SELECT COUNT(*) FROM messages WHERE receiver_id = :uid AND sender_id = t.partner_id AND listing_id = t.listing_id AND is_read = 0) as unread_count
+        FROM (
+            SELECT 
+                listing_id, 
+                CASE WHEN sender_id = :uid THEN receiver_id ELSE sender_id END as partner_id,
+                MAX(message_id) as latest_msg_id
             FROM messages 
             WHERE sender_id = :uid OR receiver_id = :uid
-            GROUP BY LEAST(sender_id, receiver_id), GREATEST(sender_id, receiver_id), listing_id
-        )
-        ORDER BY m.created_at DESC";
+            GROUP BY listing_id, CASE WHEN sender_id = :uid THEN receiver_id ELSE sender_id END
+        ) t
+        JOIN messages m ON m.message_id = t.latest_msg_id
+        JOIN users u ON u.user_id = t.partner_id
+        JOIN listings l ON l.listing_id = t.listing_id
+        ORDER BY m.created_at DESC
+    ";
+    
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':uid' => $user_id]);
+    $threads = $stmt->fetchAll();
 
-$stmt = $pdo->prepare($sql);
-$stmt->execute([':uid' => $user_id]);
-$conversations = $stmt->fetchAll();
-
-// Bulletproof Initials Function
-function getInitials($name) {
-    $name = trim($name ?? '');
-    if (!$name) return "XX"; 
-    $words = explode(" ", $name);
-    $initials = "";
-    foreach ($words as $w) { 
-        if (strlen($w) > 0) { $initials .= strtoupper($w[0]); }
-    }
-    return substr($initials, 0, 2);
-}
-
-// Time formatter (e.g., "2m ago", "1h ago", "Yesterday")
-function formatTime($datetime) {
-    $time = strtotime($datetime);
-    $diff = time() - $time;
-    if ($diff < 60) return "Now";
-    if ($diff < 3600) return floor($diff / 60) . "m";
-    if ($diff < 86400) return floor($diff / 3600) . "h";
-    if ($diff < 172800) return "Yesterday";
-    return date("M j", $time);
+} catch (PDOException $e) {
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading inbox.</div>");
 }
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Inbox — MILELE</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inbox | MILELE</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0A0A0C; color: #F3F4F6; padding-bottom: 100px; }
-        .glass-nav { background: rgba(10, 10, 12, 0.75); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-        .chat-row { transition: background 0.2s ease; border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
-        .chat-row:hover { background: rgba(255, 255, 255, 0.02); }
-        .action-fab { background: linear-gradient(135deg, #ffffff 0%, #d1d5db 100%); box-shadow: 0 8px 30px rgba(255,255,255,0.2); }
+        /* Shared Premium Glass Aesthetic */
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; }
+        
+        .navbar { background: rgba(255,255,255,0.02); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .brand { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; color: #fff; text-decoration: none; }
+        .brand span { color: #2DD4BF; }
+        .btn-back { color: #ccc; text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 12px; }
+        .btn-back:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+        
+        .header h1 { font-size: 2.5rem; margin: 0 0 10px 0; color: #fff; }
+        .header p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
+
+        /* Inbox List */
+        .thread-list { display: flex; flex-direction: column; gap: 15px; }
+        
+        .thread-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 20px; display: flex; align-items: center; gap: 20px; transition: 0.2s; text-decoration: none; color: inherit; position: relative; }
+        .thread-card:hover { background: rgba(255,255,255,0.04); border-color: rgba(45,212,191,0.3); transform: translateY(-2px); }
+        .thread-unread { border-left: 4px solid #2DD4BF; background: rgba(45,212,191,0.02); }
+
+        .avatar { width: 50px; height: 50px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; border: 1px solid rgba(45,212,191,0.2); }
+        
+        .thread-details { flex-grow: 1; overflow: hidden; }
+        .thread-header { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline; }
+        .partner-name { font-weight: bold; font-size: 1.1rem; }
+        .time { font-size: 0.8rem; color: #666; }
+        
+        .item-context { font-size: 0.85rem; color: #2DD4BF; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        .last-message { color: #888; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .last-message strong { color: #ccc; }
+
+        .unread-badge { background: #2DD4BF; color: #000; font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 12px; margin-left: 10px; }
+
+        .empty-state { text-align: center; padding: 80px 20px; color: #666; background: rgba(255,255,255,0.02); border-radius: 24px; border: 1px dashed rgba(255,255,255,0.1); }
     </style>
 </head>
-<body class="antialiased">
+<body>
 
-    <nav class="fixed top-0 w-full z-50 glass-nav">
-        <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
-            <span class="font-bold tracking-widest text-sm text-white uppercase ml-2">Inbox</span>
-            <div class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white cursor-pointer hover:bg-white/10 transition">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            </div>
-        </div>
-    </nav>
+<nav class="navbar">
+    <a href="index.php" class="brand">MILE<span>LE</span></a>
+    <a href="index.php" class="btn-back">← Back to Feed</a>
+</nav>
 
-    <main class="max-w-3xl mx-auto pt-20">
-        
-        <?php if (empty($conversations)): ?>
-            <div class="flex flex-col items-center justify-center px-4 py-20 text-center">
-                <div class="text-6xl mb-4 opacity-30">💬</div>
-                <h2 class="text-xl font-bold text-white mb-2">No messages yet</h2>
-                <p class="text-sm text-gray-400 max-w-xs mx-auto">When you contact a seller or a buyer asks about your item, the conversation will appear here.</p>
+<div class="container">
+    <div class="header">
+        <h1>Messages</h1>
+        <p>Coordinate pickups and negotiate prices.</p>
+    </div>
+
+    <div class="thread-list">
+        <?php if (empty($threads)): ?>
+            <div class="empty-state">
+                <div style="font-size: 3rem; margin-bottom: 15px;">💬</div>
+                <h2>Your inbox is empty.</h2>
+                <p>Message a seller from an item listing to start a conversation.</p>
             </div>
         <?php else: ?>
-            
-            <div class="flex flex-col">
-                <?php foreach ($conversations as $chat): 
-                    $other_name = htmlspecialchars($chat['other_user_name']);
-                    $item_title = htmlspecialchars($chat['listing_title']);
-                    $msg_text = htmlspecialchars($chat['message_text']);
-                    $time = formatTime($chat['created_at']);
-                    
-                    // Logic to see if the current user needs to read this
-                    $is_unread = ($chat['receiver_id'] == $user_id && $chat['is_read'] == 0);
-                    $colors = ['#1d4ed8','#0f766e','#b45309','#7c3aed','#be185d'];
-                    $color = $colors[$chat['message_id'] % count($colors)];
-                ?>
+            <?php foreach ($threads as $thread): ?>
+                <?php $is_unread = $thread['unread_count'] > 0; ?>
                 
-                <div class="chat-row px-4 py-4 cursor-pointer relative" onclick="window.location.href='chat.php?listing_id=<?php echo $chat['listing_id']; ?>&user=<?php echo ($chat['sender_id'] == $user_id) ? $chat['receiver_id'] : $chat['sender_id']; ?>'">
-                    <div class="flex items-center gap-4">
-                        
-                        <div class="relative shrink-0">
-                            <div class="w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-lg border border-white/10" style="background: <?php echo $color; ?>">
-                                <?php echo getInitials($other_name); ?>
-                            </div>
-                            <?php if ($is_unread): ?>
-                                <span class="absolute top-0 right-0 w-4 h-4 bg-emerald-500 border-2 border-[#0A0A0C] rounded-full"></span>
-                            <?php endif; ?>
+                <a href="chat.php?seller=<?php echo $thread['partner_id']; ?>&item=<?php echo $thread['listing_id']; ?>" 
+                   class="thread-card <?php echo $is_unread ? 'thread-unread' : ''; ?>">
+                    
+                    <div class="avatar">
+                        <?php echo strtoupper(substr($thread['partner_name'], 0, 1)); ?>
+                    </div>
+                    
+                    <div class="thread-details">
+                        <div class="thread-header">
+                            <span class="partner-name"><?php echo htmlspecialchars(explode(' ', $thread['partner_name'])[0]); ?></span>
+                            <span class="time"><?php echo date('M d, g:i A', strtotime($thread['last_message_time'])); ?></span>
                         </div>
-
-                        <div class="flex-1 min-w-0">
-                            <div class="flex justify-between items-baseline mb-1">
-                                <h3 class="text-base font-bold text-white truncate pr-2 <?php echo $is_unread ? 'text-emerald-400' : ''; ?>">
-                                    <?php echo explode(' ', $other_name)[0]; ?>
-                                </h3>
-                                <span class="text-[10px] font-bold tracking-wider text-gray-500 shrink-0"><?php echo $time; ?></span>
-                            </div>
-                            
-                            <p class="text-xs font-semibold text-gray-400 truncate mb-1 bg-white/5 inline-block px-2 py-0.5 rounded border border-white/5">
-                                📦 <?php echo $item_title; ?>
-                            </p>
-                            
-                            <p class="text-sm truncate <?php echo $is_unread ? 'text-white font-semibold' : 'text-gray-400'; ?>">
-                                <?php 
-                                    if ($chat['sender_id'] == $user_id) echo "You: ";
-                                    echo $msg_text; 
-                                ?>
-                            </p>
+                        <div class="item-context"><?php echo htmlspecialchars($thread['item_title']); ?></div>
+                        <div class="last-message">
+                            <?php if ($thread['last_sender'] == $user_id): ?>
+                                <strong>You:</strong> 
+                            <?php endif; ?>
+                            <?php echo htmlspecialchars($thread['last_message']); ?>
                         </div>
                     </div>
-                </div>
 
-                <?php endforeach; ?>
-            </div>
-            
+                    <?php if ($is_unread): ?>
+                        <div class="unread-badge"><?php echo $thread['unread_count']; ?> New</div>
+                    <?php endif; ?>
+                </a>
+            <?php endforeach; ?>
         <?php endif; ?>
-    </main>
-
-    <div class="fixed bottom-0 w-full z-50 glass-nav pb-safe pt-2">
-        <div class="max-w-md mx-auto flex justify-between items-center h-16 px-6">
-            <a href="index.php" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">🏪</span></a>
-            <a href="#" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">📚</span></a>
-            
-            <a href="Notesing.php" class="relative -top-6">
-                <div class="w-14 h-14 rounded-full action-fab flex items-center justify-center text-black text-2xl shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                    <svg class="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
-                </div>
-            </a>
-            
-            <a href="inbox.php" class="flex flex-col items-center gap-1 text-white"><span class="text-xl">💬</span></a>
-            
-            <a href="payout.php" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">👤</span></a>
-        </div>
     </div>
+</div>
 
 </body>
 </html>
