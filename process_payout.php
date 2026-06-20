@@ -1,5 +1,5 @@
 <?php
-// MILELE - Secure PIN Verification & Payout Engine
+// MILELE - Secure PIN Verification & Live B2C Payout Engine (Bulletproof V2)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -9,20 +9,29 @@ if (!isset($_SESSION['user_id']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 require 'db.php';
+require 'backend/api/MpesaGateway.php'; 
 
 $seller_id = $_SESSION['user_id'];
-$transaction_id = filter_input(INPUT_POST, 'transaction_id', FILTER_VALIDATE_INT);
-$submitted_pin = filter_input(INPUT_POST, 'escrow_pin', FILTER_SANITIZE_SPECIAL_CHARS);
 
-if (!$transaction_id || empty($submitted_pin)) {
-    $_SESSION['payout_error'] = "Invalid data submitted.";
+// Bypassing filter_input to directly and forcefully grab the raw POST data
+$transaction_id = isset($_POST['transaction_id']) ? (int)$_POST['transaction_id'] : 0;
+$submitted_pin = isset($_POST['escrow_pin']) ? trim(htmlspecialchars($_POST['escrow_pin'])) : '';
+
+// Diagnostic trap: Tell us exactly what is missing if it fails
+if ($transaction_id === 0 || empty($submitted_pin)) {
+    $_SESSION['payout_error'] = "Data Error: Missing Transaction ID (" . $transaction_id . ") or PIN.";
     header("Location: payout.php");
     exit();
 }
 
 try {
-    // 1. Fetch the exact transaction to verify ownership and check the PIN
-    $stmt = $pdo->prepare("SELECT transaction_id, escrow_pin, transaction_status FROM escrow_transactions WHERE transaction_id = :tx_id AND seller_id = :seller");
+    // 1. Fetch Transaction & Seller details
+    $stmt = $pdo->prepare("
+        SELECT t.transaction_id, t.escrow_pin, t.transaction_status, t.total_amount, u.phone_number 
+        FROM escrow_transactions t
+        JOIN users u ON t.seller_id = u.user_id
+        WHERE t.transaction_id = :tx_id AND t.seller_id = :seller
+    ");
     $stmt->execute([':tx_id' => $transaction_id, ':seller' => $seller_id]);
     $tx = $stmt->fetch();
 
@@ -38,31 +47,39 @@ try {
         exit();
     }
 
-    // 2. The Verification Gate
+    // 2. The Final Verification Gate
     if ($submitted_pin === $tx['escrow_pin']) {
         
-        // PIN Matches! Release the funds.
-        $update = $pdo->prepare("UPDATE escrow_transactions SET transaction_status = 'released' WHERE transaction_id = :tx_id");
-        $update->execute([':tx_id' => $transaction_id]);
-
-        // Add +1 to the Seller's "Successful Deals" counter to build their reputation
-        $rep_update = $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller");
-        $rep_update->execute([':seller' => $seller_id]);
-
-        // [FUTURE PHASE: This is where we will trigger the M-Pesa B2C API to actually wire the money from the cloud to the seller's phone]
+        // 3. Initiate the live M-Pesa B2C Payout!
+        $mpesa = new MpesaGateway();
         
-        $_SESSION['payout_success'] = "PIN Verified! Funds have been cleared to your account.";
+        $seller_phone = !empty($tx['phone_number']) ? $tx['phone_number'] : '0708374149'; 
+        
+        $response = $mpesa->b2cPayment($seller_phone, $tx['total_amount'], $transaction_id);
+
+        if (isset($response['ResponseCode']) && $response['ResponseCode'] == '0') {
+            // Success! Release the funds.
+            $update = $pdo->prepare("UPDATE escrow_transactions SET transaction_status = 'released' WHERE transaction_id = :tx_id");
+            $update->execute([':tx_id' => $transaction_id]);
+
+            $rep_update = $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller");
+            $rep_update->execute([':seller' => $seller_id]);
+
+            $_SESSION['payout_success'] = "PIN Verified! Safaricom is processing your payout directly to " . htmlspecialchars($seller_phone) . ".";
+        } else {
+            // Safaricom API Error
+            $error_msg = $response['errorMessage'] ?? "Connection to Safaricom B2C failed.";
+            $_SESSION['payout_error'] = "Bank Error: " . htmlspecialchars($error_msg);
+        }
         
     } else {
-        // PIN does not match
-        $_SESSION['payout_error'] = "Incorrect Vault PIN. Please ask the buyer for the correct code.";
+        $_SESSION['payout_error'] = "Incorrect Handover PIN. Please ask the buyer for the correct code.";
     }
 
 } catch (PDOException $e) {
-    $_SESSION['payout_error'] = "System error verifying PIN.";
+    $_SESSION['payout_error'] = "System error processing payout.";
 }
 
-// Send them back to the payout dashboard to see the result
 header("Location: payout.php");
 exit();
 ?>
