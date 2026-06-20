@@ -1,137 +1,83 @@
 <?php
-// backend/api/MpesaGateway.php
+// MILELE - Safaricom Daraja API Gateway (Master Engine)
 
 class MpesaGateway {
-    private $consumerKey;
-    private $consumerSecret;
-    private $env;
-    private $baseUrl;
+    // Your Secure Sandbox Keys
+    private $consumer_key = 'LA33OtNfdXyPyrTozI5KGULDecju2sAyNYMGdp85mTuRX9UA';
+    private $consumer_secret = 'MjthfBtuHJS2ezFAdMuGW87qaJd5MLn2fDRLiSnc2EVY4czOuJA1aZD3oyKmiGno';
+    private $passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919';
+    private $shortcode = '174379'; // Safaricom Standard Test Shortcode
+    
+    // Environment Toggle ('sandbox' for testing, 'live' for real money later)
+    private $env = 'sandbox'; 
+    
+    // Your Live Cloud Server URL (Where Safaricom sends the receipts)
+    private $callback_base_url = 'https://milele-campus-live-56fbf7c046b3.herokuapp.com';
 
-    // Sandbox STK Push Standard credentials
-    private $stkShortcode = "174379";
-    private $stkPasskey   = "bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919";
+    private function getBaseUrl() {
+        return $this->env === 'sandbox' ? 'https://sandbox.safaricom.co.ke' : 'https://api.safaricom.co.ke';
+    }
 
-    public function __construct() {
-        // App V2 Credentials
-        $this->consumerKey    = "cCE5mHUdgIVpmcym94b21OEG7x7jqqK3gzjCiwQQglUBbOUZ";
-        $this->consumerSecret = "ElUGFeLTYC4WYWkwYnIZ19KmHOzXLgeAqtMFufyCdcoH3jiHnVAnI8AtuslaG6Em";
-        $this->env            = "sandbox"; 
+    // 1. Generate the Temporary Access Token
+    public function getAccessToken() {
+        $url = $this->getBaseUrl() . '/oauth/v1/generate?grant_type=client_credentials';
+        $credentials = base64_encode($this->consumer_key . ':' . $this->consumer_secret);
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Authorization: Basic ' . $credentials]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
         
-        $this->baseUrl = ($this->env === "production") 
-            ? "https://api.safaricom.co.ke" 
-            : "https://sandbox.safaricom.co.ke";
-    }
-
-    private function getAccessToken() {
-        $url = $this->baseUrl . "/oauth/v1/generate?grant_type=client_credentials";
-        $curl = curl_init($url);
-        curl_setopt($curl, CURLOPT_HTTPHEADER, ["Authorization: Basic " . base64_encode($this->consumerKey . ":" . $this->consumerSecret)]);
-        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false); 
-        $response = curl_exec($curl);
-        curl_close($curl);
+        $response = curl_exec($ch);
+        curl_close($ch);
         
-        $result = json_decode($response, true);
-        return $result['access_token'] ?? null;
+        $result = json_decode($response);
+        return $result->access_token ?? null;
     }
 
-    /**
-     * Trigger STK Push (Escrow Deposit from Buyer)
-     */
-    public function triggerStkPush($phoneNumber, $amount, $escrowId) {
-        try {
-            $accessToken = $this->getAccessToken();
-            if (!$accessToken) return ["status" => "error", "message" => "OAuth Access Token generation failed."];
+    // 2. STK Push (Money IN - Prompt the Buyer's Phone)
+    public function stkPush($phone, $amount, $reference, $description) {
+        $token = $this->getAccessToken();
+        if (!$token) return ["error" => "Failed to get access token."];
 
-            $url = $this->baseUrl . "/mpesa/stkpush/v1/processrequest";
-            
-            $phoneNumber = preg_replace('/^0/', '254', $phoneNumber);
-            $phoneNumber = preg_replace('/^\+/', '', $phoneNumber);
+        $url = $this->getBaseUrl() . '/mpesa/stkpush/v1/processrequest';
+        $timestamp = date('YmdHis');
+        $password = base64_encode($this->shortcode . $this->passkey . $timestamp);
 
-            $timestamp = date('YmdHis');
-            $password = base64_encode($this->stkShortcode . $this->stkPasskey . $timestamp);
+        // Smart Phone Number Formatter: Changes 07XX or +254 to standard 254 format
+        $phone = preg_replace('/^0/', '254', $phone);
+        $phone = preg_replace('/^\+/', '', $phone);
 
-            $curlPayload = [
-                "BusinessShortCode" => $this->stkShortcode,
-                "Password"          => $password,
-                "Timestamp"         => $timestamp,
-                "TransactionType"   => "CustomerPayBillOnline", 
-                "Amount"            => round($amount),
-                "PartyA"            => $phoneNumber, 
-                "PartyB"            => $this->stkShortcode, 
-                "PhoneNumber"       => $phoneNumber,
-                "CallBackURL"       => "https://gonad-running-shifter.ngrok-free.dev/MILELE/backend/api/stk_callback.php",
-                "AccountReference"  => substr($escrowId, 0, 12), 
-                "TransactionDesc"   => "Escrow Deposit"
-            ];
+        $body = [
+            'BusinessShortCode' => $this->shortcode,
+            'Password' => $password,
+            'Timestamp' => $timestamp,
+            'TransactionType' => 'CustomerPayBillOnline',
+            'Amount' => ceil($amount), // M-Pesa rejects decimals, round up
+            'PartyA' => $phone,
+            'PartyB' => $this->shortcode,
+            'PhoneNumber' => $phone,
+            'CallBackURL' => $this->callback_base_url . '/backend/api/stk_callback.php',
+            'AccountReference' => substr($reference, 0, 12), // Max 12 chars allowed
+            'TransactionDesc' => substr($description, 0, 13) // Max 13 chars allowed
+        ];
 
-            $curl = curl_init($url);
-            curl_setopt($curl, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $accessToken, "Content-Type: application/json"]);
-            curl_setopt($curl, CURLOPT_POST, true);
-            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($curlPayload));
-            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $token,
+            'Content-Type: application/json'
+        ]);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
 
-            $response = curl_exec($curl);
-            curl_close($curl);
+        $response = curl_exec($ch);
+        curl_close($ch);
 
-            return ["status" => "success", "raw" => json_decode($response, true)];
-
-        } catch (Exception $e) {
-            return ["status" => "error", "message" => $e->getMessage()];
-        }
-    }
-
-    /**
-     * Trigger B2C Payout (Escrow Disbursement to Seller)
-     */
-    public function sendPayout($phoneNumber, $amount, $escrowId) {
-        try {
-            $accessToken = $this->getAccessToken();
-            if (!$accessToken) return ["status" => "error", "message" => "OAuth Access Token generation failed."];
-
-            // Stabilized v1 Endpoint
-            $url = $this->baseUrl . "/mpesa/b2c/v1/paymentrequest";
-
-            // Your Brand New Credential
-            $securityCredential = "dQULEr9e5VjC0qMX2EQ8tEoBeE3cuBBVmyAFz/Cbe9niC/IPoToHZMrODSZQlmTXDr3QdThx/gaQHdKPa+SBDA+uN3R1SPFkvrvdeP0zVwZgk7gmqbmxHFtPfAgPmRn7bxKim+e0Ym3huZdgzzOBnQ773DKClUIRmsQxVAXqtBCGnOUzLYQ5GsYeOhEv7t+xr63WCrkZtmw40W8JyOWIwwAd0GvTT94Gbt6OfCSAu1wVXMRY2P4LsStSj39EFXO+rJFABhv0ku4UmsimRQs6P2WNCYu8pS0h67ObfUawbd54oEwo0VPUO5vo9NTxlMB+LEgJXEXsR8FVV4vuZv/7RQ==";
-
-            // Strict Payload formatting to match the simulator exactly and avoid Sandbox crashes
-            $curlPayload = [
-                "InitiatorName"      => "testapi",
-                "SecurityCredential" => $securityCredential,
-                "CommandID"          => "BusinessPayment",
-                "Amount"             => (string) round($amount), // Forced to String
-                "PartyA"             => "600983",
-                "PartyB"             => (int) $phoneNumber,      // Forced to Integer
-                "Remarks"            => "Test",                  // Simplified to prevent Sandbox space glitches
-                "QueueTimeOutURL"    => "https://webhook.site/6d56136c-e295-49b5-bf93-6e820bd2f2bd",
-                "ResultURL"          => "https://webhook.site/6d56136c-e295-49b5-bf93-6e820bd2f2bd",
-                "Occasion"           => "Test"                   // Simplified
-            ];
-
-            $curl = curl_init($url);
-            curl_setopt($curl, CURLOPT_HTTPHEADER, ["Authorization: Bearer " . $accessToken, "Content-Type: application/json"]);
-            curl_setopt($curl, CURLOPT_POST, true);
-            curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($curlPayload));
-            curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, false);
-
-            $response = curl_exec($curl);
-            $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
-            curl_close($curl);
-
-            $result = json_decode($response, true);
-
-            if ($httpCode == 200 && isset($result['ConversationID'])) {
-                return ["status" => "success", "raw" => $result];
-            } else {
-                return ["status" => "error", "message" => $result['errorMessage'] ?? 'B2C payload rejected.'];
-            }
-
-        } catch (Exception $e) {
-            return ["status" => "error", "message" => $e->getMessage()];
-        }
+        return json_decode($response, true);
     }
 }
 ?>
