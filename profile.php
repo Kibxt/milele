@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Profile Dashboard
+// MILELE - Premium Profile Dashboard (V2 with History & Controls)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -8,21 +8,32 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
-// ⚡ THE MASTER CONNECTION
 require 'db.php';
 
 $user_id = $_SESSION['user_id'];
 
 try {
-    // Fetch User Details
+    // 1. Fetch User Details
     $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
-    // Fetch User's Active Listings
+    // 2. Fetch User's Active Listings (Inventory)
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
+
+    // 3. Fetch User's Purchase History & Active Vault Codes
+    $stmt_history = $pdo->prepare("
+        SELECT t.*, l.title, u.full_name as seller_name 
+        FROM escrow_transactions t
+        JOIN listings l ON t.listing_id = l.listing_id
+        JOIN users u ON t.seller_id = u.user_id
+        WHERE t.buyer_id = :id
+        ORDER BY t.created_at DESC
+    ");
+    $stmt_history->execute([':id' => $user_id]);
+    $purchase_history = $stmt_history->fetchAll();
 
 } catch (PDOException $e) {
     die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading profile.</div>");
@@ -37,9 +48,8 @@ try {
     <style>
         /* Ultra-Premium Glass Aesthetic */
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
-        .container { max-width: 800px; margin: 0 auto; }
+        .container { max-width: 900px; margin: 0 auto; }
         
-        /* Top Navigation Bar */
         .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
         .nav-bar h1 { color: #fff; margin: 0; font-size: 2rem; }
         .nav-buttons { display: flex; gap: 15px; }
@@ -50,7 +60,6 @@ try {
         .btn-danger { color: #F87171; border-color: rgba(248,113,113,0.3); }
         .btn-danger:hover { background: rgba(248,113,113,0.1); }
 
-        /* Profile Info Card */
         .profile-card { background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); padding: 30px; border-radius: 24px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;}
         .profile-info h2 { margin: 0 0 5px 0; color: #2DD4BF; }
         .profile-info p { margin: 0; color: #888; font-size: 0.95rem; }
@@ -58,16 +67,30 @@ try {
         .stats-box h3 { margin: 0; font-size: 2rem; color: #fff; }
         .stats-box span { font-size: 0.8rem; color: #2DD4BF; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Listings Grid */
-        .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
+        .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; margin-top: 40px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        
+        /* Listings Grid with Controls */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; }
+        .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; display: flex; flex-direction: column; }
         .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
         .item-title { font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; }
         .item-price { color: #2DD4BF; margin-bottom: 15px; }
-        .item-status { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; background: rgba(255,255,255,0.1); }
-        .status-active { background: rgba(45,212,191,0.1); color: #2DD4BF; }
-        .status-hidden { background: rgba(248,113,113,0.1); color: #F87171; }
+        
+        .card-controls { display: flex; gap: 10px; margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
+        .btn-edit { flex: 1; text-align: center; padding: 8px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 8px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
+        .btn-edit:hover { background: #2DD4BF; color: #000; }
+        .btn-delete { flex: 1; text-align: center; padding: 8px; background: rgba(248,113,113,0.1); color: #F87171; border-radius: 8px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
+        .btn-delete:hover { background: #F87171; color: #000; }
+
+        /* History Table */
+        .history-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        td { padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: #ccc; }
+        .code-box { background: rgba(0,0,0,0.5); border: 1px solid rgba(45,212,191,0.3); padding: 5px 10px; border-radius: 6px; color: #2DD4BF; font-family: monospace; font-weight: bold; letter-spacing: 2px; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; }
+        .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; }
+        .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
     </style>
 </head>
 <body>
@@ -85,7 +108,7 @@ try {
         <div class="profile-info">
             <h2><?php echo htmlspecialchars($user['full_name']); ?></h2>
             <p><?php echo htmlspecialchars($user['email']); ?></p>
-            <p style="margin-top: 10px;">🎓 <?php echo htmlspecialchars($user['university_name'] ?: 'University Not Specified'); ?></p>
+            <p style="margin-top: 10px;">🎓 <?php echo htmlspecialchars($user['university_name']); ?></p>
         </div>
         <div class="stats-box">
             <h3><?php echo (int)$user['completed_escrows']; ?></h3>
@@ -93,23 +116,69 @@ try {
         </div>
     </div>
 
-    <div class="section-title">My Studio Listings</div>
+    <div class="section-title">My Market Inventory</div>
     
     <?php if (empty($my_listings)): ?>
-        <p style="color: #666; text-align: center; padding: 40px; background: rgba(255,255,255,0.02); border-radius: 16px;">You haven't posted any items yet.</p>
+        <p style="color: #666; text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px;">You haven't posted any items yet.</p>
     <?php else: ?>
         <div class="grid">
             <?php foreach ($my_listings as $item): ?>
                 <div class="item-card">
                     <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
-                    <div class="item-status <?php echo $item['listing_status'] === 'active' ? 'status-active' : 'status-hidden'; ?>">
-                        <?php echo ucfirst($item['listing_status']); ?>
+                    <div class="card-controls">
+                        <a href="edit_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-edit">Edit Item</a>
+                        <a href="delete_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-delete" onclick="return confirm('Are you sure you want to remove this item from the market?');">Remove</a>
                     </div>
                 </div>
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
+
+    <div class="section-title" style="margin-top: 60px;">Purchase History & Vault Codes</div>
+    
+    <div class="history-section">
+        <?php if (empty($purchase_history)): ?>
+            <p style="color: #666; text-align: center;">You haven't made any purchases yet.</p>
+        <?php else: ?>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Item</th>
+                        <th>Seller</th>
+                        <th>Amount Paid</th>
+                        <th>Vault Code (PIN)</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($purchase_history as $deal): ?>
+                        <tr>
+                            <td><?php echo date('M d, Y', strtotime($deal['created_at'])); ?></td>
+                            <td style="color: #fff; font-weight: bold;"><?php echo htmlspecialchars($deal['title']); ?></td>
+                            <td><?php echo htmlspecialchars(explode(' ', $deal['seller_name'])[0]); ?></td>
+                            <td>KES <?php echo number_format($deal['total_amount'], 2); ?></td>
+                            <td>
+                                <?php if ($deal['transaction_status'] === 'funded' && !empty($deal['escrow_pin'])): ?>
+                                    <span class="code-box"><?php echo htmlspecialchars($deal['escrow_pin']); ?></span>
+                                <?php else: ?>
+                                    <span style="color: #666;">Cleared / N/A</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <?php if ($deal['transaction_status'] === 'funded'): ?>
+                                    <span class="status-badge status-funded">Locked</span>
+                                <?php else: ?>
+                                    <span class="status-badge status-released">Released</span>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php endif; ?>
+    </div>
 </div>
 
 </body>
