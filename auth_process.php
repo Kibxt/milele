@@ -1,9 +1,8 @@
 <?php
-// MILELE - Secure Registration Processor (V7 Cloud Diagnostic)
+// MILELE - Secure Registration Processor (V8)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// Force the server to show us the exact error if one happens
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
@@ -11,19 +10,18 @@ error_reporting(E_ALL);
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $full_name = filter_input(INPUT_POST, 'full_name', FILTER_SANITIZE_SPECIAL_CHARS);
     $email = filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL);
+    $phone_number = filter_input(INPUT_POST, 'phone_number', FILTER_SANITIZE_SPECIAL_CHARS);
     $password = $_POST['password'];
     $university_name = filter_input(INPUT_POST, 'university_name', FILTER_SANITIZE_SPECIAL_CHARS);
 
-    if (empty($full_name) || empty($email) || empty($password)) {
-        die("ERROR: Please fill in all fields. Go back and try again.");
+    if (empty($full_name) || empty($email) || empty($phone_number) || empty($password)) {
+        die("ERROR: Please fill in all required fields. Go back and try again.");
     }
 
-    // Check if the brain file exists before trying to load it
     if (!file_exists('db.php')) {
-        die("CRITICAL ERROR: db.php is missing from the server. The connection cannot be made.");
+        die("CRITICAL ERROR: db.php is missing from the server.");
     }
     
-    // ⚡ THE MASTER CONNECTION
     require 'db.php';
 
     try {
@@ -35,11 +33,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         $password_hash = password_hash($password, PASSWORD_DEFAULT);
 
-        $insert = $pdo->prepare("INSERT INTO users (full_name, email, password_hash, university_name, account_state) 
-                                 VALUES (:name, :email, :pass, :uni, 'active')");
+        $insert = $pdo->prepare("INSERT INTO users (full_name, email, phone_number, password_hash, university_name, account_state) 
+                                 VALUES (:name, :email, :phone, :pass, :uni, 'active')");
         $insert->execute([
             ':name' => $full_name,
             ':email' => $email,
+            ':phone' => $phone_number,
             ':pass' => $password_hash,
             ':uni' => $university_name ?? 'Not Specified'
         ]);
@@ -52,7 +51,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit();
 
     } catch (PDOException $e) {
-        // If it fails now, it will print the exact AWS cloud error on your screen
         die("CLOUD DB ERROR: " . $e->getMessage());
     }
 } else {

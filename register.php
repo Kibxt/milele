@@ -14,7 +14,6 @@ if (isset($_SESSION['user_id'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Account | MILELE</title>
     <style>
-        /* Shared Premium Glass Aesthetic */
         :root { --accent: #2DD4BF; --bg: #000; --glass: rgba(255,255,255,0.03); --border: rgba(255,255,255,0.08); }
         body { background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; margin: 0; display: flex; justify-content: center; align-items: center; background-image: radial-gradient(circle at 85% 50%, rgba(45, 212, 191, 0.08), transparent 25%), radial-gradient(circle at 15% 30%, rgba(255, 255, 255, 0.03), transparent 25%); }
         
@@ -66,13 +65,18 @@ if (isset($_SESSION['user_id'])) {
 
         <div class="grid-inputs">
             <div class="input-group">
-                <label>University</label>
-                <input type="text" name="university_name" placeholder="e.g., CUEA">
+                <label>M-Pesa Number</label>
+                <input type="tel" name="phone_number" required placeholder="07XX XXX XXX">
             </div>
             <div class="input-group">
-                <label>Password</label>
-                <input type="password" name="password" required placeholder="••••••••">
+                <label>University</label>
+                <input type="text" name="university_name" required placeholder="e.g., CUEA">
             </div>
+        </div>
+
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" name="password" required placeholder="••••••••">
         </div>
 
         <button type="submit" class="btn-primary">Create Account</button>
