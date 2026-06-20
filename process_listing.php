@@ -1,122 +1,66 @@
 <?php
-// MILELE - Secure Listing Processor & Image Handler
+// MILELE - Secure Listing Processor
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// 1. Security Gate
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['user_id'])) {
-    header("Location: index.php");
+// Block unauthorized access
+if (!isset($_SESSION['user_id']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header("Location: login.php");
     exit();
 }
 
-// Ensure the user is verified
-if ($_SESSION['account_state'] === 'registered') {
-    $_SESSION['error_msg'] = "You must verify your student email before posting items.";
-    header("Location: verification_center.php");
-    exit();
-}
+// ⚡ THE MASTER CONNECTION
+require 'db.php';
 
-// 2. Connect to the Vault
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
-try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    die("System Error: Cannot connect to the database.");
-}
+$seller_id = $_SESSION['user_id'];
+$title = filter_input(INPUT_POST, 'title', FILTER_SANITIZE_SPECIAL_CHARS);
+$price = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
+$category = filter_input(INPUT_POST, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
+$description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS);
+$item_type = filter_input(INPUT_POST, 'item_type', FILTER_SANITIZE_SPECIAL_CHARS); // 'physical' or 'digital'
 
-// 3. Capture & Sanitize Text Inputs
-$seller_id   = $_SESSION['user_id'];
-$title       = trim(filter_input(INPUT_POST, 'title', FILTER_SANITIZE_SPECIAL_CHARS));
-$description = trim(filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS));
-$price       = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
-$category    = $_POST['category'] ?? 'electronics';
-$item_type   = $_POST['item_type'] ?? 'physical';
-
-// Basic Validation - Routes back to Notesing.php on failure
-if (!$title || !$description || !$price || $price < 50) {
-    $_SESSION['error_msg'] = "Please fill out all fields correctly. Minimum price is KES 50.";
-    header("Location: Notesing.php");
-    exit();
-}
-
-// 4. Secure Image Upload Pipeline
-$final_image_path = null;
-
-if (isset($_FILES['item_image']) && $_FILES['item_image']['error'] === UPLOAD_ERR_OK) {
+// Handle the image/file upload safely
+$file_path = null;
+if (isset($_FILES['listing_file']) && $_FILES['listing_file']['error'] === UPLOAD_ERR_OK) {
+    $upload_dir = 'uploads/';
     
-    $file_tmp_path  = $_FILES['item_image']['tmp_name'];
-    $file_name      = $_FILES['item_image']['name'];
-    $file_size      = $_FILES['item_image']['size'];
-    
-    // Size check
-    if ($file_size > 5000000) {
-        $_SESSION['error_msg'] = "Image is too large. Upload under 5MB.";
-        header("Location: Notesing.php");
-        exit();
+    // Create the uploads folder if it doesn't exist
+    if (!is_dir($upload_dir)) {
+        mkdir($upload_dir, 0777, true);
     }
-
-    // Strict MIME type check
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime_type = finfo_file($finfo, $file_tmp_path);
-    finfo_close($finfo);
-
-    $allowed_mimes = ['image/jpeg', 'image/png', 'image/webp'];
     
-    if (in_array($mime_type, $allowed_mimes)) {
-        $extension = pathinfo($file_name, PATHINFO_EXTENSION);
-        $secure_filename = uniqid('milele_', true) . '.' . strtolower($extension);
-        
-        $upload_dir = 'uploads/';
-        
-        // AUTO-CREATE UPLOADS FOLDER IF IT DOES NOT EXIST
-        if (!is_dir($upload_dir)) {
-            mkdir($upload_dir, 0777, true);
-        }
-        
-        $destination = $upload_dir . $secure_filename;
-
-        // Move the file
-        if (move_uploaded_file($file_tmp_path, $destination)) {
-            $final_image_path = $destination;
-        } else {
-            $_SESSION['error_msg'] = "Server error: Could not save image to server.";
-            header("Location: Notesing.php");
-            exit();
-        }
-    } else {
-        $_SESSION['error_msg'] = "Invalid file format. Use JPG, PNG, or WEBP.";
-        header("Location: Notesing.php");
-        exit();
+    // Generate a unique filename so images don't overwrite each other
+    $file_extension = pathinfo($_FILES['listing_file']['name'], PATHINFO_EXTENSION);
+    $new_file_name = 'milele_' . uniqid('', true) . '.' . $file_extension;
+    $target_file = $upload_dir . $new_file_name;
+    
+    if (move_uploaded_file($_FILES['listing_file']['tmp_name'], $target_file)) {
+        $file_path = $target_file;
     }
 }
 
-// 5. Database Injection
 try {
-    $insert_sql = "INSERT INTO listings (seller_id, title, description, price, category, item_type, file_path, listing_status) 
-                   VALUES (:seller_id, :title, :description, :price, :category, :item_type, :file_path, 'active')";
+    // Post the item to the live cloud database
+    $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, price, category, description, file_path, item_type, listing_status) 
+                           VALUES (:seller, :title, :price, :category, :desc, :file, :type, 'active')");
     
-    $stmt = $pdo->prepare($insert_sql);
     $stmt->execute([
-        ':seller_id'      => $seller_id,
-        ':title'          => $title,
-        ':description'    => $description,
-        ':price'          => $price,
-        ':category'       => $category,
-        ':item_type'      => $item_type,
-        ':file_path'      => $final_image_path
+        ':seller' => $seller_id,
+        ':title' => $title,
+        ':price' => $price,
+        ':category' => $category,
+        ':desc' => $description,
+        ':file' => $file_path,
+        ':type' => $item_type ?? 'physical'
     ]);
 
-    // Complete Success! Send the user back to the feed to view their live item.
+    // Send the user back to the main feed to see their new item
     header("Location: index.php");
     exit();
 
 } catch (PDOException $e) {
-    $_SESSION['error_msg'] = "Database error: " . $e->getMessage();
+    $_SESSION['error_msg'] = "Error posting your listing to the live server.";
     header("Location: Notesing.php");
     exit();
 }
+?>
