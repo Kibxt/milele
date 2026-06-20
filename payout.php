@@ -1,5 +1,5 @@
 <?php
-// MILELE - Seller Payout & Escrow Claim Dashboard
+// MILELE - Seller Sales Dashboard (Simple UX Version)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,7 +13,6 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
-    // Fetch all escrow transactions where this user is the SELLER
     $stmt = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as buyer_name 
         FROM escrow_transactions t
@@ -26,7 +25,7 @@ try {
     $sales = $stmt->fetchAll();
 
 } catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading payouts.</div>");
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading sales.</div>");
 }
 ?>
 <!DOCTYPE html>
@@ -34,7 +33,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payouts | MILELE</title>
+    <title>My Sales | MILELE</title>
     <style>
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
         .container { max-width: 900px; margin: 0 auto; }
@@ -56,12 +55,10 @@ try {
         .btn-claim { background: #2DD4BF; color: #000; padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer; font-weight: bold; font-size: 0.85rem; transition: 0.2s; }
         .btn-claim:hover { background: #fff; }
 
-        /* Error/Success Messages */
         .msg { padding: 15px; border-radius: 12px; margin-bottom: 20px; text-align: center; }
         .msg-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
         .msg-success { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.2); }
 
-        /* Custom Modal */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
@@ -80,7 +77,7 @@ try {
 
 <div class="container">
     <div class="nav-bar">
-        <h1>Seller Payouts</h1>
+        <h1>Items I've Sold</h1>
         <a href="profile.php" class="btn-glass">← Back to Profile</a>
     </div>
 
@@ -93,7 +90,7 @@ try {
 
     <div class="sales-section">
         <?php if (empty($sales)): ?>
-            <p style="color: #666; text-align: center;">You have not made any sales yet.</p>
+            <p style="color: #666; text-align: center;">You have not sold any items yet.</p>
         <?php else: ?>
             <table>
                 <thead>
@@ -115,16 +112,16 @@ try {
                             <td style="color: #2DD4BF;">KES <?php echo number_format($sale['total_amount'], 2); ?></td>
                             <td>
                                 <?php if ($sale['transaction_status'] === 'funded'): ?>
-                                    <span class="status-badge status-funded">Locked</span>
+                                    <span class="status-badge status-funded">Secured</span>
                                 <?php else: ?>
-                                    <span class="status-badge status-released">Cleared</span>
+                                    <span class="status-badge status-released">Completed</span>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($sale['transaction_status'] === 'funded'): ?>
-                                    <button onclick="openClaimModal(<?php echo $sale['transaction_id']; ?>)" class="btn-claim">Claim Funds</button>
+                                    <button onclick="openClaimModal(<?php echo $sale['transaction_id']; ?>)" class="btn-claim">Receive Payment</button>
                                 <?php else: ?>
-                                    <span style="color: #666; font-size: 0.85rem;">Released to You</span>
+                                    <span style="color: #666; font-size: 0.85rem;">Paid to You</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -137,14 +134,14 @@ try {
 
 <div class="modal-overlay" id="claimModal">
     <div class="modal-box">
-        <h2 style="margin: 0 0 10px 0; color: #fff;">Enter Vault PIN</h2>
-        <p style="color: #888; font-size: 0.9rem; margin-bottom: 25px;">Ask the buyer for their 4-digit Escrow PIN to release these funds into your account.</p>
+        <h2 style="margin: 0 0 10px 0; color: #fff;">Enter Handover PIN</h2>
+        <p style="color: #888; font-size: 0.9rem; margin-bottom: 25px;">Ask the buyer for their 4-digit PIN to confirm handover and release these funds to your account.</p>
         
         <form action="process_payout.php" method="POST">
             <input type="hidden" name="transaction_id" id="modalTxId" value="">
             <input type="text" name="escrow_pin" class="pin-input" maxlength="4" placeholder="••••" required autocomplete="off" pattern="\d{4}" title="Please enter a 4-digit PIN">
             
-            <button type="submit" class="btn-submit-pin">Verify & Claim</button>
+            <button type="submit" class="btn-submit-pin">Verify & Receive Funds</button>
             <button type="button" onclick="closeClaimModal()" class="btn-cancel">Cancel</button>
         </form>
     </div>
@@ -166,7 +163,6 @@ try {
         pinInput.value = '';
     }
 
-    // Close if clicking outside
     window.addEventListener('click', function(e) {
         if (e.target === claimModal) closeClaimModal();
     });

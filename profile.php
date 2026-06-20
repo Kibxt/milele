@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Profile Dashboard (V4 Complete Dashboard)
+// MILELE - Profile Dashboard (Simple UX Version)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,17 +13,14 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
-    // 1. User Details
     $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
-    // 2. Inventory
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
 
-    // 3. Purchase History
     $stmt_history = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as seller_name 
         FROM escrow_transactions t
@@ -46,7 +43,6 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile | MILELE</title>
     <style>
-        /* Shared Glass Aesthetic */
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
         .container { max-width: 900px; margin: 0 auto; }
         
@@ -90,7 +86,6 @@ try {
         .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; }
         .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
 
-        /* Premium Custom Modal Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
@@ -112,7 +107,7 @@ try {
         <h1>My Profile</h1>
         <div class="nav-buttons">
             <a href="index.php" class="btn-glass btn-accent">← Return to Market</a>
-            <a href="payout.php" class="btn-glass" style="background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.2);">Payouts</a>
+            <a href="payout.php" class="btn-glass" style="background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.2);">My Sales</a>
             <a href="logout.php" class="btn-glass btn-danger">Logout</a>
         </div>
     </div>
@@ -129,7 +124,7 @@ try {
         </div>
     </div>
 
-    <div class="section-title">My Market Inventory</div>
+    <div class="section-title">Items I'm Selling</div>
     
     <?php if (empty($my_listings)): ?>
         <p style="color: #666; text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px;">You haven't posted any items yet.</p>
@@ -148,11 +143,11 @@ try {
         </div>
     <?php endif; ?>
 
-    <div class="section-title" style="margin-top: 60px;">Purchase History & Vault Codes</div>
+    <div class="section-title" style="margin-top: 60px;">Items I've Bought</div>
     
     <div class="history-section">
         <?php if (empty($purchase_history)): ?>
-            <p style="color: #666; text-align: center;">You haven't made any purchases yet.</p>
+            <p style="color: #666; text-align: center;">You haven't bought anything yet.</p>
         <?php else: ?>
             <table>
                 <thead>
@@ -161,7 +156,7 @@ try {
                         <th>Item</th>
                         <th>Seller</th>
                         <th>Amount Paid</th>
-                        <th>Vault Code (PIN)</th>
+                        <th>Handover PIN</th>
                         <th>Status</th>
                         <th>Action</th>
                     </tr>
@@ -177,14 +172,14 @@ try {
                                 <?php if ($deal['transaction_status'] === 'funded' && !empty($deal['escrow_pin'])): ?>
                                     <span class="code-box"><?php echo htmlspecialchars($deal['escrow_pin']); ?></span>
                                 <?php else: ?>
-                                    <span style="color: #666;">Cleared / N/A</span>
+                                    <span style="color: #666;">Cleared</span>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($deal['transaction_status'] === 'funded'): ?>
-                                    <span class="status-badge status-funded">Locked</span>
+                                    <span class="status-badge status-funded">Secured</span>
                                 <?php else: ?>
-                                    <span class="status-badge status-released">Released</span>
+                                    <span class="status-badge status-released">Completed</span>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -214,8 +209,8 @@ try {
 
 <div class="modal-overlay" id="guideModal">
     <div class="modal-box" style="text-align: left;">
-        <div class="modal-title" style="text-align: center; color: #2DD4BF;">How Escrow Works</div>
-        <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot access it until you provide your 4-digit PIN.</p>
+        <div class="modal-title" style="text-align: center; color: #2DD4BF;">How Handover Works</div>
+        <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot get paid until you provide your 4-digit PIN.</p>
         
         <div style="margin-bottom: 15px;">
             <strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span>
@@ -224,7 +219,7 @@ try {
             <strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches the listing exactly.</span>
         </div>
         <div style="margin-bottom: 25px;">
-            <strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your Vault PIN when you have the item in your hands. This releases the money to them.</span>
+            <strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your PIN when you have the item in your hands. This completes the sale.</span>
         </div>
         
         <button onclick="closeGuideModal()" class="btn-cancel" style="width: 100%;">Understood</button>
@@ -232,7 +227,6 @@ try {
 </div>
 
 <script>
-    // Delete Modal Logic
     const deleteModal = document.getElementById('deleteModal');
     const confirmBtn = document.getElementById('confirmDeleteBtn');
 
@@ -246,18 +240,11 @@ try {
         setTimeout(() => confirmBtn.href = "#", 300);
     }
 
-    // Guide Modal Logic
     const guideModal = document.getElementById('guideModal');
     
-    function openGuideModal() {
-        guideModal.classList.add('active');
-    }
-    
-    function closeGuideModal() {
-        guideModal.classList.remove('active');
-    }
+    function openGuideModal() { guideModal.classList.add('active'); }
+    function closeGuideModal() { guideModal.classList.remove('active'); }
 
-    // Close modals if clicking outside
     window.addEventListener('click', function(e) {
         if (e.target === deleteModal) closeModal();
         if (e.target === guideModal) closeGuideModal();
