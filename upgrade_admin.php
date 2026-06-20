@@ -1,28 +1,45 @@
 <?php
-// MILELE - Admin Crowning Script
-
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
-
-if (!isset($_SESSION['user_id'])) {
-    die("<h1 style='color: #F87171; background: #000; padding: 50px; text-align: center;'>You must be logged in to run this script.</h1>");
-}
+// MILELE - Multi-Account Admin Crowning Script
 
 require 'db.php';
-$user_id = $_SESSION['user_id'];
+
+// The executive triad of admin accounts
+$admin_emails = [
+    'kibeta425@gmail.com',
+    'yegonkibe4@gmail.com',
+    'alvin.kibet@strathmore.edu'
+];
 
 try {
-    // 1. Add the secret Admin column to the users table (if it doesn't exist yet)
+    // 1. Force-add the column to the very end of the table
     try {
-        $pdo->exec("ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0 AFTER role");
+        $pdo->exec("ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0");
     } catch (PDOException $e) {
-        // If it fails, the column already exists, which is fine! We just keep going.
+        // If the column already exists, silently keep moving
     }
 
-    // 2. Upgrade the currently logged-in user to Admin status
-    $stmt = $pdo->prepare("UPDATE users SET is_admin = 1 WHERE user_id = :id");
-    $stmt->execute([':id' => $user_id]);
+    // 2. Prepare the dynamic SQL query to accept multiple emails
+    $inQuery = implode(',', array_fill(0, count($admin_emails), '?'));
+    $stmt = $pdo->prepare("UPDATE users SET is_admin = 1 WHERE email IN ($inQuery)");
 
-    echo "<h1 style='color: #2DD4BF; background: #000; padding: 50px; font-family: sans-serif; text-align: center; border-radius: 20px; margin: 40px;'>👑 Crown Secured. You are now the Platform Admin!</h1>";
+    // 3. Execute the upgrade
+    $stmt->execute($admin_emails);
+
+    // 4. Verify it worked
+    $updatedCount = $stmt->rowCount();
+    
+    if ($updatedCount > 0) {
+        echo "<h1 style='color: #2DD4BF; background: #000; padding: 50px; font-family: sans-serif; text-align: center; border-radius: 20px; margin: 40px;'>👑 Crown Secured. Admin privileges granted to $updatedCount account(s)!</h1>";
+        
+        echo "<div style='color: #888; text-align: center; font-family: sans-serif;'>Authorized Emails:<br>";
+        foreach ($admin_emails as $email) {
+            echo "<strong style='color: #fff; line-height: 2;'>" . htmlspecialchars($email) . "</strong><br>";
+        }
+        echo "</div>";
+
+    } else {
+        echo "<h1 style='color: #FBBF24; background: #000; padding: 50px; font-family: sans-serif; text-align: center; border-radius: 20px; margin: 40px;'>⚠️ No accounts found matching those emails. Make sure you have signed up on the platform with them first!</h1>";
+    }
 
 } catch (PDOException $e) {
     echo "<h1 style='color: #F87171; background: #000; padding: 50px; text-align: center;'>Database Error: " . htmlspecialchars($e->getMessage()) . "</h1>";
