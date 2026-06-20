@@ -1,9 +1,7 @@
 <?php
 // MILELE - Smart Checkout Engine (With Double-Failsafe Notifications)
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['user_id'])) {
     header("Location: index.php");
@@ -11,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['user_id'])) {
 }
 
 $buyer_id = $_SESSION['user_id'];
-$buyer_name = explode(' ', $_SESSION['full_name'])[0]; // Grab buyer's first name for the alert
+$buyer_name = explode(' ', $_SESSION['full_name'] ?? 'Buyer')[0];
 $listing_id = filter_input(INPUT_POST, 'listing_id', FILTER_VALIDATE_INT);
 $phone_number = filter_input(INPUT_POST, 'phone_number', FILTER_SANITIZE_SPECIAL_CHARS);
 
@@ -21,16 +19,8 @@ if (!$listing_id || empty($phone_number)) {
     exit();
 }
 
-// Database Connection
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
-try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    die("System Error.");
-}
+// ⚡ THE MASTER CONNECTION
+require 'db.php';
 
 try {
     $pdo->beginTransaction();
@@ -62,11 +52,8 @@ try {
 
     // 3. The Y-Junction: Digital vs Physical
     if ($item['item_type'] === 'digital') {
-        // ==========================================
-        // BRANCH B: DIGITAL ITEM (Instant Release)
-        // ==========================================
         
-        // 1. Record the transaction
+        // BRANCH B: DIGITAL ITEM (Instant Release)
         $insert_sql = "INSERT INTO escrow_transactions 
                        (listing_id, buyer_id, seller_id, total_amount, platform_fee, net_payout, transaction_status) 
                        VALUES (:listing, :buyer, :seller, :total, :fee, :net, 'released')";
@@ -82,11 +69,9 @@ try {
         
         $transaction_id = $pdo->lastInsertId();
 
-        // 2. Give the seller their trust score point instantly
         $update_user = "UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller";
         $pdo->prepare($update_user)->execute([':seller' => $item['seller_id']]);
 
-        // 3. 🔔 FIRE THE NOTIFICATION TO SELLER
         $notif_sql = "INSERT INTO notifications (user_id, title, message, icon, link) VALUES (:uid, :title, :msg, :icon, :link)";
         $pdo->prepare($notif_sql)->execute([
             ':uid' => $item['seller_id'],
@@ -97,16 +82,12 @@ try {
         ]);
 
         $pdo->commit();
-
-        // Send the buyer straight to the download page
         header("Location: download.php?tx=" . $transaction_id);
         exit();
 
     } else {
-        // ==========================================
-        // BRANCH A: PHYSICAL ITEM (Escrow Vault)
-        // ==========================================
         
+        // BRANCH A: PHYSICAL ITEM (Escrow Vault)
         $escrow_pin = strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)); 
 
         $insert_sql = "INSERT INTO escrow_transactions 
@@ -125,12 +106,9 @@ try {
 
         $transaction_id = $pdo->lastInsertId();
 
-        // Hide physical items from the feed
         $update_sql = "UPDATE listings SET listing_status = 'hidden' WHERE listing_id = :id";
-        $up_stmt = $pdo->prepare($update_sql);
-        $up_stmt->execute([':id' => $listing_id]);
+        $pdo->prepare($update_sql)->execute([':id' => $listing_id]);
 
-        // 3a. 🔔 FIRE NOTIFICATION TO SELLER
         $notif_sql = "INSERT INTO notifications (user_id, title, message, icon, link) VALUES (:uid, :title, :msg, :icon, :link)";
         $pdo->prepare($notif_sql)->execute([
             ':uid' => $item['seller_id'],
@@ -140,7 +118,6 @@ try {
             ':link' => "payout.php"
         ]);
 
-        // 3b. 🔔 FIRE NOTIFICATION TO BUYER (The Failsafe)
         $pdo->prepare($notif_sql)->execute([
             ':uid' => $buyer_id,
             ':title' => "Escrow PIN Secured 🔐",
@@ -150,7 +127,6 @@ try {
         ]);
 
         $pdo->commit();
-
         $_SESSION['latest_pin'] = $escrow_pin;
         header("Location: vault.php?tx=" . $transaction_id);
         exit();
@@ -162,3 +138,4 @@ try {
     header("Location: checkout.php?id=" . $listing_id);
     exit();
 }
+?>

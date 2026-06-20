@@ -1,43 +1,34 @@
 <?php
-// MILELE - Premium User Profile & Command Center
+// MILELE - Dynamic Feed V6 (Live Cloud Connected)
 
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (session_status() === PHP_SESSION_NONE) session_start();
 
-if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
-    exit();
-}
+if (!isset($_SESSION['user_id'])) { header("Location: login.php"); exit(); }
+if (isset($_SESSION['account_state']) && $_SESSION['account_state'] === 'registered') { header("Location: verification_center.php"); exit(); }
 
-$user_id = $_SESSION['user_id'];
+// ⚡ THE MASTER CONNECTION
+require 'db.php';
 
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    die("System Offline.");
+    $sql = "SELECT l.*, u.full_name, u.university_name
+            FROM listings l
+            JOIN users u ON l.seller_id = u.user_id
+            WHERE l.listing_status = 'active'
+            ORDER BY l.created_at DESC LIMIT 50";
+    $live_listings = $pdo->query($sql)->fetchAll();
+} catch (Exception $e) {
+    $live_listings = [];
 }
-
-$stmt_user = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, account_state FROM users WHERE user_id = :uid");
-$stmt_user->execute([':uid' => $user_id]);
-$user = $stmt_user->fetch();
-
-$stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :uid AND listing_status = 'active' ORDER BY created_at DESC");
-$stmt_listings->execute([':uid' => $user_id]);
-$my_listings = $stmt_listings->fetchAll();
 
 function getInitials($name) {
-    $name = trim($name ?? '');
-    if (!$name) return "XX"; 
-    $words = explode(" ", $name);
-    $initials = "";
-    foreach ($words as $w) { if (strlen($w) > 0) { $initials .= strtoupper($w[0]); } }
-    return substr($initials, 0, 2);
+    $words = explode(" ", trim($name));
+    $i = "";
+    foreach ($words as $w) { if($w) $i .= strtoupper($w[0]); }
+    return substr($i, 0, 2);
 }
 
-$initials = getInitials($user['full_name']);
+$user_name = $_SESSION['full_name'] ?? 'Student';
+$user_initials = getInitials($user_name);
 ?>
 <!DOCTYPE html>
 <html lang="en">
