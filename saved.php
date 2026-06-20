@@ -1,5 +1,5 @@
 <?php
-// MILELE - User Wishlist
+// MILELE - Premium Saved Items Dashboard
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -8,112 +8,114 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+require 'db.php';
+
 $user_id = $_SESSION['user_id'];
 
-// Database Connection
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-} catch (PDOException $e) {
-    die("System Offline.");
-}
+    // Fetch only the items this specific user has saved
+    $sql = "SELECT l.*, u.full_name 
+            FROM saved_items s
+            JOIN listings l ON s.listing_id = l.listing_id
+            JOIN users u ON l.seller_id = u.user_id
+            WHERE s.user_id = :uid AND l.listing_status = 'active'
+            ORDER BY s.created_at DESC";
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':uid' => $user_id]);
+    $saved_items = $stmt->fetchAll();
 
-// Fetch ONLY the active items this specific user has saved
-$sql = "SELECT l.*, u.full_name 
-        FROM saved_items s
-        JOIN listings l ON s.listing_id = l.listing_id
-        JOIN users u ON l.seller_id = u.user_id
-        WHERE s.user_id = :uid AND l.listing_status = 'active'
-        ORDER BY s.saved_at DESC";
-$stmt = $pdo->prepare($sql);
-$stmt->execute([':uid' => $user_id]);
-$saved_items = $stmt->fetchAll();
+} catch (PDOException $e) {
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading saved items.</div>");
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Saved Items — MILELE</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saved Items | MILELE</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0A0A0C; color: #F3F4F6; padding-bottom: 100px; }
-        .glass-nav { background: rgba(10, 10, 12, 0.85); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
-        .action-fab { background: linear-gradient(135deg, #ffffff 0%, #d1d5db 100%); box-shadow: 0 8px 30px rgba(255,255,255,0.2); }
-        .grid-card { background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px; overflow: hidden; }
+        /* Shared Premium Glass Aesthetic */
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; }
+        
+        .navbar { background: rgba(255,255,255,0.02); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .brand { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; color: #fff; text-decoration: none; }
+        .brand span { color: #2DD4BF; }
+        .btn-back { color: #ccc; text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 12px; }
+        .btn-back:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 40px 20px; }
+        
+        .header h1 { font-size: 2.5rem; margin: 0 0 10px 0; color: #fff; }
+        .header p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
+
+        /* Grid System */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 30px; }
+        
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; overflow: hidden; transition: 0.3s; text-decoration: none; color: inherit; display: flex; flex-direction: column; position: relative; }
+        .card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-5px); box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        /* The Unsave Button on the card */
+        .btn-unsave { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.7); backdrop-filter: blur(10px); padding: 8px; border-radius: 50%; color: #F87171; border: 1px solid rgba(248,113,113,0.2); z-index: 10; text-decoration: none; font-size: 1.2rem; display: flex; justify-content: center; align-items: center; transition: 0.2s; }
+        .btn-unsave:hover { background: #F87171; color: #000; }
+
+        .card-img { width: 100%; aspect-ratio: 4/3; background: #111; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .card-img img { width: 100%; height: 100%; object-fit: cover; }
+        
+        .card-body { padding: 20px; flex-grow: 1; display: flex; flex-direction: column; }
+        .card-title { font-size: 1.1rem; font-weight: bold; margin: 0 0 10px 0; line-height: 1.4; }
+        .card-price { color: #2DD4BF; font-size: 1.2rem; font-weight: bold; margin-bottom: 15px; }
+        .seller-name { font-size: 0.85rem; color: #888; margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
+        
+        .empty-state { text-align: center; padding: 100px 20px; color: #666; grid-column: 1 / -1; background: rgba(255,255,255,0.02); border-radius: 24px; border: 1px dashed rgba(255,255,255,0.1); }
     </style>
 </head>
-<body class="antialiased">
+<body>
 
-    <nav class="fixed top-0 w-full z-50 glass-nav">
-        <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between">
-            <a href="index.php" class="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white hover:bg-white/10 transition">←</a>
-            <span class="font-bold tracking-widest text-sm text-white uppercase">Wishlist</span>
-            <div class="w-10"></div>
-        </div>
-    </nav>
+<nav class="navbar">
+    <a href="index.php" class="brand">MILE<span>LE</span></a>
+    <a href="index.php" class="btn-back">← Back to Feed</a>
+</nav>
 
-    <main class="max-w-3xl mx-auto px-4 pt-24">
-        
+<div class="container">
+    <div class="header">
+        <h1>Your Vault</h1>
+        <p>Items you've bookmarked for later.</p>
+    </div>
+
+    <div class="grid">
         <?php if (empty($saved_items)): ?>
-            <div class="flex flex-col items-center justify-center py-20 text-center border-dashed border-2 border-white/10 rounded-3xl mt-4">
-                <div class="text-6xl mb-4 opacity-50">💔</div>
-                <h2 class="text-lg font-bold text-white mb-2">Nothing saved yet</h2>
-                <p class="text-xs text-gray-400 max-w-[250px] mx-auto">Tap the heart icon on any listing to save it here for later.</p>
-                <a href="index.php" class="mt-6 inline-block bg-white text-black font-bold text-sm px-6 py-3 rounded-xl hover:scale-105 transition">Explore Feed</a>
+            <div class="empty-state">
+                <div style="font-size: 3rem; margin-bottom: 15px;">🔖</div>
+                <h2>Your vault is empty.</h2>
+                <p>When you see an item you like on the feed, save it, and it will appear here.</p>
             </div>
         <?php else: ?>
-            
-            <div class="mb-6 flex justify-between items-end">
-                <h1 class="text-2xl font-bold text-white">Your Watchlist</h1>
-                <span class="text-xs font-bold text-gray-500 uppercase tracking-widest"><?php echo count($saved_items); ?> Items</span>
-            </div>
-
-            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <?php foreach ($saved_items as $item): 
-                    $img = $item['file_path'] ?: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=200&q=75';
-                ?>
-                <div class="grid-card cursor-pointer group relative" onclick="window.location.href='item.php?id=<?php echo $item['listing_id']; ?>'">
+            <?php foreach ($saved_items as $item): ?>
+                <div class="card">
+                    <a href="toggle_save.php?id=<?php echo $item['listing_id']; ?>" class="btn-unsave" title="Remove from Saved">✖</a>
                     
-                    <button class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/60 backdrop-blur flex items-center justify-center z-10 border border-white/10 text-rose-500 hover:scale-110 transition" onclick="event.stopPropagation(); window.location.href='index.php'; alert('You must view the feed to unsave right now.');">
-                        ❤️
-                    </button>
-
-                    <div class="aspect-[4/5] bg-neutral-900 overflow-hidden relative">
-                        <img src="<?php echo htmlspecialchars($img); ?>" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                    </div>
-                    <div class="p-3">
-                        <h3 class="text-xs font-bold text-white line-clamp-1"><?php echo htmlspecialchars($item['title']); ?></h3>
-                        <p class="text-sm font-bold text-rose-400 mt-1">KES <?php echo number_format($item['price']); ?></p>
-                        <p class="text-[9px] text-gray-500 mt-2 uppercase tracking-widest truncate">From <?php echo htmlspecialchars($item['full_name']); ?></p>
-                    </div>
+                    <a href="item.php?id=<?php echo $item['listing_id']; ?>" style="text-decoration: none; color: inherit; display: flex; flex-direction: column; height: 100%;">
+                        <div class="card-img">
+                            <?php if (!empty($item['file_path']) && $item['item_type'] === 'physical'): ?>
+                                <img src="<?php echo htmlspecialchars($item['file_path']); ?>" alt="Cover">
+                            <?php else: ?>
+                                <div style="color: #444; font-size: 2rem;">
+                                    <?php echo $item['item_type'] === 'digital' ? '📄' : '📷'; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        <div class="card-body">
+                            <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
+                            <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
+                            <div class="seller-name">Sold by <?php echo htmlspecialchars(explode(' ', $item['full_name'])[0]); ?></div>
+                        </div>
+                    </a>
                 </div>
-                <?php endforeach; ?>
-            </div>
-
+            <?php endforeach; ?>
         <?php endif; ?>
-    </main>
-
-    <div class="fixed bottom-0 w-full z-50 glass-nav border-t border-white/5 pb-safe pt-2">
-        <div class="max-w-md mx-auto flex justify-between items-center h-16 px-6">
-            <a href="index.php" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">🏪</span></a>
-            
-            <a href="saved.php" class="flex flex-col items-center gap-1 text-white"><span class="text-xl">📚</span></a>
-            
-            <a href="Notesing.php" class="relative -top-6">
-                <div class="w-14 h-14 rounded-full action-fab flex items-center justify-center text-black text-2xl shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                    <svg class="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"></path></svg>
-                </div>
-            </a>
-            
-            <a href="inbox.php" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">💬</span></a>
-            <a href="profile.php" class="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors"><span class="text-xl">👤</span></a>
-        </div>
     </div>
+</div>
 
 </body>
 </html>
