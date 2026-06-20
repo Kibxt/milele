@@ -1,110 +1,68 @@
 <?php
-// MILELE - The Escrow Payout Engine
+// MILELE - Secure PIN Verification & Payout Engine
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_SESSION['user_id'])) {
-    header("Location: payout.php");
+if (!isset($_SESSION['user_id']) || $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header("Location: login.php");
     exit();
 }
+
+require 'db.php';
 
 $seller_id = $_SESSION['user_id'];
-$seller_name = explode(' ', $_SESSION['full_name'] ?? 'Seller')[0];
-
 $transaction_id = filter_input(INPUT_POST, 'transaction_id', FILTER_VALIDATE_INT);
-$submitted_pin = strtoupper(trim(filter_input(INPUT_POST, 'escrow_pin', FILTER_SANITIZE_SPECIAL_CHARS)));
+$submitted_pin = filter_input(INPUT_POST, 'escrow_pin', FILTER_SANITIZE_SPECIAL_CHARS);
 
 if (!$transaction_id || empty($submitted_pin)) {
-    $_SESSION['error_msg'] = "Please enter the 6-digit PIN.";
+    $_SESSION['payout_error'] = "Invalid data submitted.";
     header("Location: payout.php");
     exit();
 }
 
-// Database Connection
-$db_host = 'localhost'; $db_name = 'milele_escrow'; $db_user = 'root'; $db_pass = ''; 
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
+    // 1. Fetch the exact transaction to verify ownership and check the PIN
+    $stmt = $pdo->prepare("SELECT transaction_id, escrow_pin, transaction_status FROM escrow_transactions WHERE transaction_id = :tx_id AND seller_id = :seller");
+    $stmt->execute([':tx_id' => $transaction_id, ':seller' => $seller_id]);
+    $tx = $stmt->fetch();
+
+    if (!$tx) {
+        $_SESSION['payout_error'] = "Transaction not found or unauthorized.";
+        header("Location: payout.php");
+        exit();
+    }
+
+    if ($tx['transaction_status'] !== 'funded') {
+        $_SESSION['payout_error'] = "These funds have already been claimed or are unavailable.";
+        header("Location: payout.php");
+        exit();
+    }
+
+    // 2. The Verification Gate
+    if ($submitted_pin === $tx['escrow_pin']) {
+        
+        // PIN Matches! Release the funds.
+        $update = $pdo->prepare("UPDATE escrow_transactions SET transaction_status = 'released' WHERE transaction_id = :tx_id");
+        $update->execute([':tx_id' => $transaction_id]);
+
+        // Add +1 to the Seller's "Successful Deals" counter to build their reputation
+        $rep_update = $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller");
+        $rep_update->execute([':seller' => $seller_id]);
+
+        // [FUTURE PHASE: This is where we will trigger the M-Pesa B2C API to actually wire the money from the cloud to the seller's phone]
+        
+        $_SESSION['payout_success'] = "PIN Verified! Funds have been cleared to your account.";
+        
+    } else {
+        // PIN does not match
+        $_SESSION['payout_error'] = "Incorrect Vault PIN. Please ask the buyer for the correct code.";
+    }
+
 } catch (PDOException $e) {
-    die("System Error.");
+    $_SESSION['payout_error'] = "System error verifying PIN.";
 }
 
-try {
-    $pdo->beginTransaction();
-
-    // 1. Lock the transaction row to prevent double-spending
-    $sql = "SELECT et.*, l.title, u.full_name as buyer_name 
-            FROM escrow_transactions et 
-            JOIN listings l ON et.listing_id = l.listing_id 
-            JOIN users u ON et.buyer_id = u.user_id 
-            WHERE et.transaction_id = :tx AND et.seller_id = :seller AND et.transaction_status = 'funded' 
-            FOR UPDATE";
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([':tx' => $transaction_id, ':seller' => $seller_id]);
-    $deal = $stmt->fetch();
-
-    if (!$deal) {
-        $pdo->rollBack();
-        $_SESSION['error_msg'] = "Invalid or expired transaction.";
-        header("Location: payout.php");
-        exit();
-    }
-
-    // 2. The Ultimate Test: Does the PIN match?
-    if ($submitted_pin !== $deal['escrow_pin']) {
-        $pdo->rollBack();
-        $_SESSION['error_msg'] = "Incorrect PIN. The vault remains locked.";
-        header("Location: payout.php");
-        exit();
-    }
-
-    // ==========================================
-    // THE PIN IS CORRECT. RELEASE THE FUNDS.
-    // ==========================================
-
-    // 3. Mark Escrow as Completed
-    $update_tx = "UPDATE escrow_transactions SET transaction_status = 'completed' WHERE transaction_id = :tx";
-    $pdo->prepare($update_tx)->execute([':tx' => $transaction_id]);
-
-    // 4. Soft-delete the listing so it never appears in the feed again
-    $delete_listing = "UPDATE listings SET listing_status = 'deleted' WHERE listing_id = :lid";
-    $pdo->prepare($delete_listing)->execute([':lid' => $deal['listing_id']]);
-
-    // 5. Increase the Seller's Trust Score (Completed Deals)
-    $trust_score = "UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = :seller";
-    $pdo->prepare($trust_score)->execute([':seller' => $seller_id]);
-
-    // 6. 🔔 NOTIFY THE SELLER (Success)
-    $notif_seller = "INSERT INTO notifications (user_id, title, message, icon, link) VALUES (:uid, :title, :msg, :icon, :link)";
-    $pdo->prepare($notif_seller)->execute([
-        ':uid' => $seller_id,
-        ':title' => "Payout Successful! 💰",
-        ':msg' => "PIN verified. KES " . number_format($deal['net_payout']) . " from {$deal['buyer_name']} has been officially released to your account.",
-        ':icon' => "✅",
-        ':link' => "profile.php"
-    ]);
-
-    // 7. 🔔 NOTIFY THE BUYER (Receipt)
-    $notif_buyer = "INSERT INTO notifications (user_id, title, message, icon, link) VALUES (:uid, :title, :msg, :icon, :link)";
-    $pdo->prepare($notif_buyer)->execute([
-        ':uid' => $deal['buyer_id'],
-        ':title' => "Item Received 🤝",
-        ':msg' => "You successfully released the funds for '{$deal['title']}' to {$seller_name}. Thank you for using MILELE.",
-        ':icon' => "🛍️",
-        ':link' => "index.php"
-    ]);
-
-    $pdo->commit();
-
-    $_SESSION['success_msg'] = "KES " . number_format($deal['net_payout']) . " has been cleared to your M-Pesa.";
-    header("Location: payout.php");
-    exit();
-
-} catch (Exception $e) {
-    $pdo->rollBack();
-    $_SESSION['error_msg'] = "A system error occurred. Please try again.";
-    header("Location: payout.php");
-    exit();
-}
+// Send them back to the payout dashboard to see the result
+header("Location: payout.php");
+exit();
+?>
