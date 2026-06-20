@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Checkout Processor & STK Push Initiator
+// MILELE - Premium Checkout Processor & STK Push Initiator (Diagnostic Mode)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -73,7 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
     } catch (PDOException $e) {
-        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>System processing error.</div>");
+        // DIAGNOSTIC TRAP: This will now print the exact database crash reason
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>Database Error: " . htmlspecialchars($e->getMessage()) . "</div>");
     }
 } else {
     header("Location: index.php");
