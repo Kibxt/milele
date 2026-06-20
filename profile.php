@@ -1,5 +1,5 @@
 <?php
-// MILELE - Profile Dashboard (Simple UX Version)
+// MILELE - Profile Dashboard (With Secret Admin Door)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,14 +13,17 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
-    $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at FROM users WHERE user_id = :id");
+    // 1. Fetch User Details (NOW INCLUDING 'is_admin')
+    $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at, is_admin FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
+    // 2. Fetch Active Inventory
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
 
+    // 3. Fetch Purchase History
     $stmt_history = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as seller_name 
         FROM escrow_transactions t
@@ -108,6 +111,11 @@ try {
         <div class="nav-buttons">
             <a href="index.php" class="btn-glass btn-accent">← Return to Market</a>
             <a href="payout.php" class="btn-glass" style="background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.2);">My Sales</a>
+            
+            <?php if (isset($user['is_admin']) && $user['is_admin'] == 1): ?>
+                <a href="admin_dashboard.php" class="btn-glass" style="background: rgba(248, 113, 113, 0.1); color: #F87171; border-color: rgba(248, 113, 113, 0.3);">👑 Admin Panel</a>
+            <?php endif; ?>
+
             <a href="logout.php" class="btn-glass btn-danger">Logout</a>
         </div>
     </div>
