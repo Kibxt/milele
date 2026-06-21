@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (Multi-Image Array & AI Loop)
+// MILELE - Premium Item Upload Terminal (With 3-Strike System)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -22,14 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ==========================================
     // 🛠️ SILENT DATABASE UPGRADES
     // ==========================================
-    try {
-        // Ensure item_type exists
-        $pdo->exec("ALTER TABLE listings ADD COLUMN item_type VARCHAR(50) DEFAULT 'Physical'");
-    } catch (PDOException $e) {}
-    try {
-        // Upgrade image_path to TEXT to hold massive JSON arrays of 15 images
-        $pdo->exec("ALTER TABLE listings MODIFY image_path TEXT");
-    } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE listings ADD COLUMN item_type VARCHAR(50) DEFAULT 'Physical'"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE listings MODIFY image_path TEXT"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN banned_until DATETIME DEFAULT NULL"); } catch (PDOException $e) {} 
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {} // NEW: Strike Tracker
 
     $uploaded_urls = [];
     $is_safe = true;
@@ -41,7 +37,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = "Maximum of 15 images allowed. You selected $file_count.";
             $is_safe = false;
         } else {
-            // LOOP THROUGH EVERY UPLOADED IMAGE
             for ($i = 0; $i < $file_count; $i++) {
                 if ($_FILES['images']['error'][$i] === UPLOAD_ERR_OK) {
                     
@@ -79,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($ai_response_raw === false) {
                         $error = "API Connection Failed on Image #$image_number: " . htmlspecialchars($curl_err);
                         $is_safe = false;
-                        break; // Kill the loop instantly
+                        break; 
                     } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
                         
                         $weapon_score = isset($ai_result['weapon']) ? $ai_result['weapon'] : (isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0);
@@ -91,18 +86,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $safe_score = isset($ai_result['nudity']['safe']) ? $ai_result['nudity']['safe'] : (isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1);
 
                         if ($weapon_score > 0.4 || $alcohol_score > 0.4 || $drugs_score > 0.4 || $offensive_score > 0.4 || $gore_score > 0.4 || $safe_score < 0.5) {
-                            $is_safe = false;
                             
-                            $w_pct = round($weapon_score * 100);
-                            $a_pct = round($alcohol_score * 100);
-                            $d_pct = round($drugs_score * 100);
-                            
-                            $error = "<strong>⚠️ UPLOAD BATCH REJECTED</strong><br><br>Image #$image_number triggered our security shield:<br>";
-                            if ($w_pct > 40) $error .= "🔫 <strong>Weapons:</strong> {$w_pct}% confidence<br>";
-                            if ($a_pct > 40) $error .= "🍺 <strong>Alcohol:</strong> {$a_pct}% confidence<br>";
-                            if ($d_pct > 40) $error .= "💊 <strong>Drugs:</strong> {$d_pct}% confidence<br>";
-                            if ($safe_score < 0.5) $error .= "🔞 <strong>Explicit Content detected.</strong><br>";
-                            break; // Kill loop
+                            // ==========================================
+                            // 🔨 THE 3-STRIKE LOGIC ENGINE
+                            // ==========================================
+                            $stmt_strikes = $pdo->prepare("SELECT strike_count FROM users WHERE user_id = :id");
+                            $stmt_strikes->execute([':id' => $seller_id]);
+                            $user_data = $stmt_strikes->fetch();
+                            $current_strikes = $user_data ? (int)$user_data['strike_count'] : 0;
+                            $new_strikes = $current_strikes + 1;
+
+                            if ($new_strikes >= 3) {
+                                // Strike 3: Ban them and kick them out
+                                $pdo->prepare("UPDATE users SET strike_count = :strikes, banned_until = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE user_id = :id")
+                                    ->execute([':strikes' => $new_strikes, ':id' => $seller_id]);
+                                session_destroy();
+                                session_start();
+                                $_SESSION['login_error'] = "🚨 ACCOUNT SUSPENDED: You have reached 3 security strikes for prohibited content. Your account is banned for 30 days.";
+                                header("Location: login.php");
+                                exit();
+                            } else {
+                                // Strike 1 & 2: Issue a warning but let them stay logged in
+                                $pdo->prepare("UPDATE users SET strike_count = :strikes WHERE user_id = :id")
+                                    ->execute([':strikes' => $new_strikes, ':id' => $seller_id]);
+                                
+                                $w_pct = round($weapon_score * 100);
+                                $a_pct = round($alcohol_score * 100);
+                                $d_pct = round($drugs_score * 100);
+                                
+                                $error = "<strong style='color:#FCA5A5;'>⚠️ UPLOAD REJECTED (STRIKE $new_strikes/3)</strong><br><br>Image #$image_number triggered our AI security shield:<br>";
+                                if ($w_pct > 40) $error .= "🔫 Weapons: {$w_pct}% confidence<br>";
+                                if ($a_pct > 40) $error .= "🍺 Alcohol: {$a_pct}% confidence<br>";
+                                if ($d_pct > 40) $error .= "💊 Drugs: {$d_pct}% confidence<br>";
+                                if ($safe_score < 0.5) $error .= "🔞 Explicit Content detected.<br>";
+                                
+                                $error .= "<br><strong style='color:#fff;'>If you reach 3 strikes, your account will be suspended.</strong> Please remove the prohibited items from the frame and try again.";
+                                $is_safe = false;
+                                break; 
+                            }
                         }
                     } else {
                         $error = "SIGHTENGINE ERROR on Image #$image_number. Upload aborted.";
@@ -145,12 +166,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 💾 CHECKPOINT 3: DATABASE SAVE (JSON ARRAY)
+    // 💾 CHECKPOINT 3: DATABASE SAVE 
     // ==========================================
     if (empty($error) && $is_safe && count($uploaded_urls) > 0) {
         if ($title && $price > 0 && $description && $category && $item_type) {
             try {
-                // Compress the array of URLs into a JSON string
                 $json_image_path = json_encode($uploaded_urls);
 
                 $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, item_type, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :type, :desc, :price, :img, 'active', NOW())");
@@ -288,7 +308,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (fileCount > 15) {
             alert("You can only upload a maximum of 15 images.");
-            e.target.value = ''; // Reset the input
+            e.target.value = '';
             display.textContent = "Select up to 15 photos";
             display.style.color = "#fff";
         } else if (fileCount > 0) {
