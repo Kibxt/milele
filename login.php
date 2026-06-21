@@ -13,7 +13,6 @@ require 'db.php';
 // ==========================================
 // 🛠️ SILENT DATABASE UPGRADES
 // ==========================================
-// We force the database to create these columns if they don't exist yet before anyone tries to log in.
 try { $pdo->exec("ALTER TABLE users ADD COLUMN banned_until DATETIME DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {}
 
@@ -30,11 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     if (!empty($email) && !empty($password)) {
         try {
-            $stmt = $pdo->prepare("SELECT user_id, password, banned_until FROM users WHERE email = :email");
+            // PATCHED: Now requesting 'password_hash' to match your database exactly
+            $stmt = $pdo->prepare("SELECT user_id, password_hash, banned_until FROM users WHERE email = :email");
             $stmt->execute([':email' => $email]);
             $user = $stmt->fetch();
 
-            if ($user && password_verify($password, $user['password'])) {
+            // PATCHED: Verifying against 'password_hash'
+            if ($user && password_verify($password, $user['password_hash'])) {
                 
                 // ==========================================
                 // 🛑 THE BAN WALL
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $ban_end_date = date("F j, Y, g:i A", strtotime($user['banned_until']));
                     $error = "🚨 <strong>ACCOUNT SUSPENDED</strong><br>Your account has been banned for repeatedly violating our security rules. This ban will automatically lift on:<br><span style='color:#fff;'>$ban_end_date</span>";
                 } else {
-                    // THE FORGIVENESS PROTOCOL: If ban is over, lift the ban AND reset strikes to 0
+                    // THE FORGIVENESS PROTOCOL
                     if (!empty($user['banned_until'])) {
                         $pdo->prepare("UPDATE users SET banned_until = NULL, strike_count = 0 WHERE user_id = ?")->execute([$user['user_id']]);
                     }
@@ -56,7 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $error = "Invalid email or password.";
             }
         } catch (PDOException $e) {
-            // UNMASKED ERROR: We now print the exact database error instead of flying blind.
             $error = "System Error: " . htmlspecialchars($e->getMessage());
         }
     } else {
