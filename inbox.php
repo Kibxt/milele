@@ -1,47 +1,51 @@
 <?php
-// MILELE - Premium Inbox Hub
+// MILELE - Premium Messaging Terminal
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require 'db.php';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-require 'db.php';
-
-$user_id = $_SESSION['user_id'];
+$current_user_id = $_SESSION['user_id'];
+$active_chat_user = filter_input(INPUT_GET, 'user', FILTER_VALIDATE_INT);
 
 try {
-    // Advanced Cloud SQL to fetch active chat threads, latest messages, and unread counts
-    $sql = "
-        SELECT 
-            t.listing_id, 
-            t.partner_id, 
-            u.full_name as partner_name, 
-            l.title as item_title, 
-            m.message_text as last_message, 
-            m.created_at as last_message_time,
-            m.sender_id as last_sender,
-            (SELECT COUNT(*) FROM messages WHERE receiver_id = :uid AND sender_id = t.partner_id AND listing_id = t.listing_id AND is_read = 0) as unread_count
-        FROM (
-            SELECT 
-                listing_id, 
-                CASE WHEN sender_id = :uid THEN receiver_id ELSE sender_id END as partner_id,
-                MAX(message_id) as latest_msg_id
-            FROM messages 
-            WHERE sender_id = :uid OR receiver_id = :uid
-            GROUP BY listing_id, CASE WHEN sender_id = :uid THEN receiver_id ELSE sender_id END
-        ) t
-        JOIN messages m ON m.message_id = t.latest_msg_id
-        JOIN users u ON u.user_id = t.partner_id
-        JOIN listings l ON l.listing_id = t.listing_id
-        ORDER BY m.created_at DESC
-    ";
+    // 1. Fetch all unique users this person has chatted with
+    $stmt_contacts = $pdo->prepare("
+        SELECT DISTINCT u.user_id, u.full_name 
+        FROM users u
+        JOIN messages m ON (u.user_id = m.sender_id OR u.user_id = m.receiver_id)
+        WHERE (m.sender_id = :my_id OR m.receiver_id = :my_id) AND u.user_id != :my_id
+    ");
+    $stmt_contacts->execute([':my_id' => $current_user_id]);
+    $contacts = $stmt_contacts->fetchAll();
+
+    // 2. If a specific chat is selected, fetch those messages
+    $messages = [];
+    $chat_partner_name = "Select a conversation";
     
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([':uid' => $user_id]);
-    $threads = $stmt->fetchAll();
+    if ($active_chat_user) {
+        // Get partner's name
+        $stmt_name = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
+        $stmt_name->execute([$active_chat_user]);
+        $chat_partner_name = $stmt_name->fetchColumn() ?: "Unknown User";
+
+        // Get message history
+        $stmt_msgs = $pdo->prepare("
+            SELECT * FROM messages 
+            WHERE (sender_id = :me AND receiver_id = :them) 
+               OR (sender_id = :them AND receiver_id = :me)
+            ORDER BY created_at ASC
+        ");
+        $stmt_msgs->execute([':me' => $current_user_id, ':them' => $active_chat_user]);
+        $messages = $stmt_msgs->fetchAll();
+        
+        // Mark as read
+        $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?")->execute([$active_chat_user, $current_user_id]);
+    }
 
 } catch (PDOException $e) {
     die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading inbox.</div>");
@@ -54,97 +58,100 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inbox | MILELE</title>
     <style>
-        /* Shared Premium Glass Aesthetic */
-        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; }
+        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 20px; height: 100vh; box-sizing: border-box; display: flex; flex-direction: column; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-shrink: 0;}
+        .nav-bar h1 { color: #fff; margin: 0; font-size: 2rem;}
+        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.9rem; }
         
-        .navbar { background: rgba(255,255,255,0.02); backdrop-filter: blur(24px); border-bottom: 1px solid rgba(255,255,255,0.05); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
-        .brand { font-size: 1.5rem; font-weight: 800; letter-spacing: 2px; color: #fff; text-decoration: none; }
-        .brand span { color: #2DD4BF; }
-        .btn-back { color: #ccc; text-decoration: none; font-size: 0.95rem; font-weight: 500; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 12px; }
-        .btn-back:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .chat-container { display: flex; gap: 20px; flex-grow: 1; min-height: 0; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; overflow: hidden; }
+        
+        /* Contacts Sidebar */
+        .contacts-sidebar { width: 300px; background: rgba(0,0,0,0.3); border-right: 1px solid rgba(255,255,255,0.05); overflow-y: auto; display: flex; flex-direction: column;}
+        .contact-item { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); text-decoration: none; color: #ccc; display: block; transition: 0.2s;}
+        .contact-item:hover, .contact-active { background: rgba(45,212,191,0.1); color: #fff; border-left: 4px solid #2DD4BF; }
+        .contact-name { font-weight: bold; font-size: 1.1rem; margin-bottom: 5px; }
 
-        .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+        /* Active Chat Area */
+        .chat-area { flex-grow: 1; display: flex; flex-direction: column; background: transparent; }
+        .chat-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); font-weight: bold; font-size: 1.2rem; color: #2DD4BF; background: rgba(0,0,0,0.4);}
         
-        .header h1 { font-size: 2.5rem; margin: 0 0 10px 0; color: #fff; }
-        .header p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
+        .messages-window { flex-grow: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        
+        .msg-bubble { max-width: 70%; padding: 12px 18px; border-radius: 20px; font-size: 0.95rem; line-height: 1.4; position: relative;}
+        .msg-mine { background: #2DD4BF; color: #000; align-self: flex-end; border-bottom-right-radius: 4px; }
+        .msg-theirs { background: rgba(255,255,255,0.1); color: #fff; align-self: flex-start; border-bottom-left-radius: 4px; }
+        .msg-time { font-size: 0.7rem; opacity: 0.6; margin-top: 5px; text-align: right; display: block;}
 
-        /* Inbox List */
-        .thread-list { display: flex; flex-direction: column; gap: 15px; }
-        
-        .thread-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 20px; display: flex; align-items: center; gap: 20px; transition: 0.2s; text-decoration: none; color: inherit; position: relative; }
-        .thread-card:hover { background: rgba(255,255,255,0.04); border-color: rgba(45,212,191,0.3); transform: translateY(-2px); }
-        .thread-unread { border-left: 4px solid #2DD4BF; background: rgba(45,212,191,0.02); }
+        .chat-input-area { padding: 20px; border-top: 1px solid rgba(255,255,255,0.05); background: rgba(0,0,0,0.4); display: flex; gap: 10px;}
+        .chat-input { flex-grow: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 15px; border-radius: 12px; color: #fff; font-size: 1rem; outline: none; transition: 0.3s;}
+        .chat-input:focus { border-color: #2DD4BF; }
+        .btn-send { background: #2DD4BF; color: #000; border: none; padding: 0 25px; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.2s;}
+        .btn-send:hover { background: #fff; }
 
-        .avatar { width: 50px; height: 50px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1.2rem; flex-shrink: 0; border: 1px solid rgba(45,212,191,0.2); }
+        .empty-state { flex-grow: 1; display: flex; justify-content: center; align-items: center; color: #666; font-size: 1.2rem; flex-direction: column; gap: 15px;}
         
-        .thread-details { flex-grow: 1; overflow: hidden; }
-        .thread-header { display: flex; justify-content: space-between; margin-bottom: 5px; align-items: baseline; }
-        .partner-name { font-weight: bold; font-size: 1.1rem; }
-        .time { font-size: 0.8rem; color: #666; }
-        
-        .item-context { font-size: 0.85rem; color: #2DD4BF; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        .last-message { color: #888; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .last-message strong { color: #ccc; }
-
-        .unread-badge { background: #2DD4BF; color: #000; font-size: 0.75rem; font-weight: bold; padding: 4px 10px; border-radius: 12px; margin-left: 10px; }
-
-        .empty-state { text-align: center; padding: 80px 20px; color: #666; background: rgba(255,255,255,0.02); border-radius: 24px; border: 1px dashed rgba(255,255,255,0.1); }
+        @media (max-width: 768px) {
+            .contacts-sidebar { display: <?php echo $active_chat_user ? 'none' : 'flex'; ?>; width: 100%; }
+            .chat-area { display: <?php echo $active_chat_user ? 'flex' : 'none'; ?>; width: 100%; }
+        }
     </style>
 </head>
 <body>
 
-<nav class="navbar">
-    <a href="index.php" class="brand">MILE<span>LE</span></a>
-    <a href="index.php" class="btn-back">← Back to Feed</a>
-</nav>
-
-<div class="container">
-    <div class="header">
-        <h1>Messages</h1>
-        <p>Coordinate pickups and negotiate prices.</p>
+    <div class="nav-bar">
+        <h1>💬 Inbox</h1>
+        <a href="index.php" class="btn-glass">← Back to Market</a>
     </div>
 
-    <div class="thread-list">
-        <?php if (empty($threads)): ?>
-            <div class="empty-state">
-                <div style="font-size: 3rem; margin-bottom: 15px;">💬</div>
-                <h2>Your inbox is empty.</h2>
-                <p>Message a seller from an item listing to start a conversation.</p>
-            </div>
-        <?php else: ?>
-            <?php foreach ($threads as $thread): ?>
-                <?php $is_unread = $thread['unread_count'] > 0; ?>
+    <div class="chat-container">
+        <div class="contacts-sidebar">
+            <?php if (empty($contacts)): ?>
+                <div style="padding: 20px; color: #666; text-align: center;">No messages yet.</div>
+            <?php else: ?>
+                <?php foreach ($contacts as $contact): ?>
+                    <a href="inbox.php?user=<?php echo $contact['user_id']; ?>" class="contact-item <?php echo ($active_chat_user == $contact['user_id']) ? 'contact-active' : ''; ?>">
+                        <div class="contact-name"><?php echo htmlspecialchars($contact['full_name']); ?></div>
+                    </a>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </div>
+
+        <div class="chat-area">
+            <?php if (!$active_chat_user): ?>
+                <div class="empty-state">
+                    <div style="font-size: 3rem;">💬</div>
+                    Select a conversation to start chatting.
+                </div>
+            <?php else: ?>
+                <div class="chat-header">
+                    <?php echo htmlspecialchars($chat_partner_name); ?>
+                    <a href="inbox.php" style="float:right; color:#888; text-decoration:none; font-size:0.9rem;" class="mobile-only-back">✖</a>
+                </div>
                 
-                <a href="chat.php?seller=<?php echo $thread['partner_id']; ?>&item=<?php echo $thread['listing_id']; ?>" 
-                   class="thread-card <?php echo $is_unread ? 'thread-unread' : ''; ?>">
-                    
-                    <div class="avatar">
-                        <?php echo strtoupper(substr($thread['partner_name'], 0, 1)); ?>
-                    </div>
-                    
-                    <div class="thread-details">
-                        <div class="thread-header">
-                            <span class="partner-name"><?php echo htmlspecialchars(explode(' ', $thread['partner_name'])[0]); ?></span>
-                            <span class="time"><?php echo date('M d, g:i A', strtotime($thread['last_message_time'])); ?></span>
+                <div class="messages-window" id="msgWindow">
+                    <?php foreach ($messages as $msg): ?>
+                        <div class="msg-bubble <?php echo ($msg['sender_id'] == $current_user_id) ? 'msg-mine' : 'msg-theirs'; ?>">
+                            <?php echo nl2br(htmlspecialchars($msg['message_text'])); ?>
+                            <span class="msg-time"><?php echo date('g:i A', strtotime($msg['created_at'])); ?></span>
                         </div>
-                        <div class="item-context"><?php echo htmlspecialchars($thread['item_title']); ?></div>
-                        <div class="last-message">
-                            <?php if ($thread['last_sender'] == $user_id): ?>
-                                <strong>You:</strong> 
-                            <?php endif; ?>
-                            <?php echo htmlspecialchars($thread['last_message']); ?>
-                        </div>
-                    </div>
+                    <?php endforeach; ?>
+                </div>
 
-                    <?php if ($is_unread): ?>
-                        <div class="unread-badge"><?php echo $thread['unread_count']; ?> New</div>
-                    <?php endif; ?>
-                </a>
-            <?php endforeach; ?>
-        <?php endif; ?>
+                <form action="send_message.php" method="POST" class="chat-input-area">
+                    <input type="hidden" name="receiver_id" value="<?php echo $active_chat_user; ?>">
+                    <input type="text" name="message_text" class="chat-input" placeholder="Type a message..." required autocomplete="off">
+                    <button type="submit" class="btn-send">Send</button>
+                </form>
+            <?php endif; ?>
+        </div>
     </div>
-</div>
 
+    <script>
+        // Auto-scroll to bottom of chat
+        const msgWindow = document.getElementById('msgWindow');
+        if (msgWindow) {
+            msgWindow.scrollTop = msgWindow.scrollHeight;
+        }
+    </script>
 </body>
 </html>

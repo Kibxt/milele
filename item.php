@@ -1,5 +1,5 @@
 <?php
-// MILELE - Detailed Item Page (Cloud Image Supported)
+// MILELE - Detailed Item Page (Cloud Image Supported & Messaging Wired)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -95,7 +95,9 @@ try {
                     <span class="seller-name"><?php echo htmlspecialchars($item['seller_name']); ?></span>
                     <span class="seller-uni">🎓 <?php echo htmlspecialchars($item['university_name']); ?></span>
                 </div>
-                <a href="#" onclick="alert('Inbox messaging coming soon!')" class="btn-msg">Chat</a>
+                <?php if ($current_user_id !== $item['seller_id']): ?>
+                    <a href="inbox.php?user=<?php echo $item['seller_id']; ?>&listing=<?php echo $item['listing_id']; ?>" class="btn-msg">💬 Chat with Seller</a>
+                <?php endif; ?>
             </div>
 
             <div class="description"><?php echo htmlspecialchars($item['description']); ?></div>
