@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (With AI Moderation & Cloud Storage)
+// MILELE - Premium Item Upload Terminal (AI Moderation & Cloud Storage Active)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -32,39 +32,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_setopt($ch_ai, CURLOPT_POST, true);
         curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
+        
+        // Forcing exact Mime-Type and Filename for AI recognition
+        $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
+        
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,weapons', // Scanning for explicit content and weapons
+            'models' => 'nudity-2.0,weapons', 
             'api_user' => $sightengine_user,
             'api_secret' => $sightengine_secret,
-            'media' => new CURLFile($_FILES['image']['tmp_name'])
+            'media' => $cfile
         ));
         
         $ai_response_raw = curl_exec($ch_ai);
+        $curl_err = curl_error($ch_ai);
         curl_close($ch_ai);
+        
         $ai_result = json_decode($ai_response_raw, true);
 
         // Analyze the AI's verdict
         $is_safe = true;
-        if (isset($ai_result['status']) && $ai_result['status'] === 'success') {
-            // If weapon probability is high OR safe nudity probability is low, flag it
+        
+        if ($ai_response_raw === false) {
+            $error = "SERVER CATCH: cURL Error - " . htmlspecialchars($curl_err);
+            $is_safe = false;
+        } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
             if ($ai_result['weapon'] > 0.5 || $ai_result['nudity']['safe'] < 0.5) {
                 $is_safe = false;
+                $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image.";
             }
         } else {
-            // If the AI fails to respond, we fail safely to prevent bypasses
-            $error = "Security scan failed. Please try again.";
+            $api_error_msg = isset($ai_result['error']['message']) ? $ai_result['error']['message'] : "Unknown API Error";
+            $error = "SIGHTENGINE ERROR: " . htmlspecialchars($api_error_msg);
             $is_safe = false;
         }
 
-        if (!$is_safe && empty($error)) {
-            $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image. Repeated attempts will result in an immediate account suspension.";
-        } 
         // ==========================================
         // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
         // ==========================================
-        else if ($is_safe) {
-            // REMINDER: Ensure your ImgBB API key is active here
-            $imgbb_api_key = 'YOUR_IMGBB_API_KEY_HERE'; 
+        if ($is_safe) {
+            // ImgBB Live Key Inserted
+            $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
             
             $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
             
@@ -137,7 +144,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .btn-submit:hover { background: #fff; }
         .btn-cancel { display: block; text-align: center; margin-top: 15px; color: #888; text-decoration: none; }
         
-        /* Premium Loading Screen */
         #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; color: #2DD4BF; font-weight: bold; font-size: 1.2rem;}
         .spinner { border: 4px solid rgba(45,212,191,0.2); border-top: 4px solid #2DD4BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px;}
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
