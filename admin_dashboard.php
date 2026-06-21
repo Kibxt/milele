@@ -1,5 +1,5 @@
 <?php
-// MILELE - Executive Admin Control Center
+// MILELE - Executive Admin Control Center (With Premium Action Modals)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -86,6 +86,13 @@ try {
         .btn-refund:hover { background: #F87171; color: #000; }
         .btn-force { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; border: 1px solid rgba(45, 212, 191, 0.2); }
         .btn-force:hover { background: #2DD4BF; color: #000; }
+
+        /* Premium Modal Styling */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
+        .modal-overlay.active { display: flex; opacity: 1; }
+        .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 420px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
+        .modal-overlay.active .modal-box { transform: translateY(0); }
+        .btn-modal-action { flex: 1; padding: 14px; border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; border: none; font-size: 1rem; }
     </style>
 </head>
 <body>
@@ -144,17 +151,8 @@ try {
                             <td>
                                 <?php if ($tx['transaction_status'] === 'funded' || $tx['transaction_status'] === 'disputed'): ?>
                                     <div class="action-group">
-                                        <form action="admin_resolve.php" method="POST" onsubmit="return confirm('WARNING: This will reverse the money to the BUYER via Safaricom B2C.');">
-                                            <input type="hidden" name="transaction_id" value="<?php echo $tx['transaction_id']; ?>">
-                                            <input type="hidden" name="action" value="refund">
-                                            <button type="submit" class="btn-admin-action btn-refund">Refund Buyer</button>
-                                        </form>
-
-                                        <form action="admin_resolve.php" method="POST" onsubmit="return confirm('WARNING: This will release the money to the SELLER via Safaricom B2C.');">
-                                            <input type="hidden" name="transaction_id" value="<?php echo $tx['transaction_id']; ?>">
-                                            <input type="hidden" name="action" value="force_pay">
-                                            <button type="submit" class="btn-admin-action btn-force">Force Pay</button>
-                                        </form>
+                                        <button type="button" class="btn-admin-action btn-refund" onclick="openRefundModal(<?php echo $tx['transaction_id']; ?>)">Refund Buyer</button>
+                                        <button type="button" class="btn-admin-action btn-force" onclick="openForcePayModal(<?php echo $tx['transaction_id']; ?>)">Force Pay</button>
                                     </div>
                                 <?php else: ?>
                                     <span style="color: #444; font-size: 0.8rem;">Locked</span>
@@ -167,6 +165,68 @@ try {
         <?php endif; ?>
     </div>
 </div>
+
+<div class="modal-overlay" id="refundModal">
+    <div class="modal-box" style="border: 1px solid rgba(248, 113, 113, 0.3);">
+        <div style="font-size: 3rem; margin-bottom: 15px;">⏪</div>
+        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #F87171; font-weight: bold;">Refund Buyer</div>
+        <p style="color: #888; font-size: 0.95rem; margin-bottom: 25px; line-height: 1.6; text-align: left;">
+            WARNING: This will instantly reverse the locked funds back to the <strong>BUYER</strong> via Safaricom B2C. This resolves the dispute in favor of the buyer and terminates the escrow loop.
+        </p>
+        
+        <form action="admin_resolve.php" method="POST" style="display: flex; gap: 15px; margin: 0;">
+            <input type="hidden" name="transaction_id" id="refundTxId" value="">
+            <input type="hidden" name="action" value="refund">
+            
+            <button type="button" onclick="closeRefundModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
+            <button type="submit" class="btn-modal-action" style="background: #F87171; color: #000;">Confirm Refund</button>
+        </form>
+    </div>
+</div>
+
+<div class="modal-overlay" id="forcePayModal">
+    <div class="modal-box" style="border: 1px solid rgba(45, 212, 191, 0.3);">
+        <div style="font-size: 3rem; margin-bottom: 15px;">✅</div>
+        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #2DD4BF; font-weight: bold;">Force Payout</div>
+        <p style="color: #888; font-size: 0.95rem; margin-bottom: 25px; line-height: 1.6; text-align: left;">
+            WARNING: This will instantly release the locked money to the <strong>SELLER</strong> via Safaricom B2C, overriding the buyer's PIN requirement. This resolves the dispute in favor of the seller.
+        </p>
+        
+        <form action="admin_resolve.php" method="POST" style="display: flex; gap: 15px; margin: 0;">
+            <input type="hidden" name="transaction_id" id="forceTxId" value="">
+            <input type="hidden" name="action" value="force_pay">
+            
+            <button type="button" onclick="closeForcePayModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
+            <button type="submit" class="btn-modal-action" style="background: #2DD4BF; color: #000;">Force Payout</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Refund Modal Logic
+    const refundModal = document.getElementById('refundModal');
+    const refundTxInput = document.getElementById('refundTxId');
+    function openRefundModal(txId) { 
+        refundTxInput.value = txId; 
+        refundModal.classList.add('active'); 
+    }
+    function closeRefundModal() { refundModal.classList.remove('active'); }
+
+    // Force Pay Modal Logic
+    const forcePayModal = document.getElementById('forcePayModal');
+    const forceTxInput = document.getElementById('forceTxId');
+    function openForcePayModal(txId) { 
+        forceTxInput.value = txId; 
+        forcePayModal.classList.add('active'); 
+    }
+    function closeForcePayModal() { forcePayModal.classList.remove('active'); }
+
+    // Close Modals on Background Click
+    window.addEventListener('click', function(e) {
+        if (e.target === refundModal) closeRefundModal();
+        if (e.target === forcePayModal) closeForcePayModal();
+    });
+</script>
 
 </body>
 </html>
