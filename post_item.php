@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (ImgBB Cloud Integration)
+// MILELE - Premium Item Upload Terminal (With AI Moderation & Cloud Storage)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -22,39 +22,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         
-        // --- MILELE CLOUD IMAGE TELEPORTER ---
-        // Replace this with your actual ImgBB API Key
-        $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
+        // ==========================================
+        // 🚨 CHECKPOINT 1: SIGHTENGINE AI MODERATION
+        // ==========================================
+        $sightengine_user = '1287637059';     
+        $sightengine_secret = 'vVLakzVx9WAHwqvg9o8p9ucggiu5byzJ'; 
         
-        // Grab the raw image data and convert it to base64 for transmission
-        $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
+        $ch_ai = curl_init('https://api.sightengine.com/1.0/check.json');
+        curl_setopt($ch_ai, CURLOPT_POST, true);
+        curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
+            'models' => 'nudity-2.0,weapons', // Scanning for explicit content and weapons
+            'api_user' => $sightengine_user,
+            'api_secret' => $sightengine_secret,
+            'media' => new CURLFile($_FILES['image']['tmp_name'])
+        ));
         
-        // Open a secure connection to the ImgBB Cloud
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-        
-        // Fire the image to the cloud and catch the response
-        $response = curl_exec($ch);
-        curl_close($ch);
-        
-        $result = json_decode($response, true);
-        
-        if (isset($result['data']['url'])) {
-            // SUCCESS! Grab the permanent cloud URL
-            $image_path = $result['data']['url']; 
+        $ai_response_raw = curl_exec($ch_ai);
+        curl_close($ch_ai);
+        $ai_result = json_decode($ai_response_raw, true);
+
+        // Analyze the AI's verdict
+        $is_safe = true;
+        if (isset($ai_result['status']) && $ai_result['status'] === 'success') {
+            // If weapon probability is high OR safe nudity probability is low, flag it
+            if ($ai_result['weapon'] > 0.5 || $ai_result['nudity']['safe'] < 0.5) {
+                $is_safe = false;
+            }
         } else {
-            $error = "Cloud upload failed. Please try a different photo.";
+            // If the AI fails to respond, we fail safely to prevent bypasses
+            $error = "Security scan failed. Please try again.";
+            $is_safe = false;
+        }
+
+        if (!$is_safe && empty($error)) {
+            $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image. Repeated attempts will result in an immediate account suspension.";
+        } 
+        // ==========================================
+        // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
+        // ==========================================
+        else if ($is_safe) {
+            // REMINDER: Ensure your ImgBB API key is active here
+            $imgbb_api_key = 'YOUR_IMGBB_API_KEY_HERE'; 
+            
+            $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
+            
+            $ch_cloud = curl_init();
+            curl_setopt($ch_cloud, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
+            curl_setopt($ch_cloud, CURLOPT_POST, 1);
+            curl_setopt($ch_cloud, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
+            curl_setopt($ch_cloud, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch_cloud, CURLOPT_SSL_VERIFYPEER, false);
+            
+            $cloud_response = curl_exec($ch_cloud);
+            curl_close($ch_cloud);
+            
+            $cloud_result = json_decode($cloud_response, true);
+            
+            if (isset($cloud_result['data']['url'])) {
+                $image_path = $cloud_result['data']['url']; 
+            } else {
+                $error = "Cloud upload failed. Please try a different photo.";
+            }
         }
     }
 
+    // ==========================================
+    // 💾 CHECKPOINT 3: DATABASE SAVE
+    // ==========================================
     if (empty($error)) {
         if ($title && $price > 0 && $description && $category && $image_path) {
             try {
-                // Save the permanent Cloud URL to your database
                 $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :desc, :price, :img, 'active', NOW())");
                 $stmt->execute([
                     ':seller' => $seller_id,
@@ -94,25 +133,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         textarea { resize: vertical; min-height: 100px; }
         .file-upload-wrapper { position: relative; width: 100%; text-align: center; background: rgba(45,212,191,0.05); border: 2px dashed rgba(45,212,191,0.3); border-radius: 16px; padding: 30px 20px; cursor: pointer; box-sizing: border-box;}
         .file-upload-wrapper input[type="file"] { position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
-        .btn-submit { width: 100%; padding: 16px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px;}
+        .btn-submit { width: 100%; padding: 16px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px; transition: 0.2s;}
+        .btn-submit:hover { background: #fff; }
         .btn-cancel { display: block; text-align: center; margin-top: 15px; color: #888; text-decoration: none; }
         
-        /* Loading Overlay */
+        /* Premium Loading Screen */
         #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; color: #2DD4BF; font-weight: bold; font-size: 1.2rem;}
         .spinner { border: 4px solid rgba(45,212,191,0.2); border-top: 4px solid #2DD4BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px;}
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .ai-shield { text-align: center; margin-top: 20px; font-size: 0.8rem; color: #666; display: flex; align-items: center; justify-content: center; gap: 5px;}
     </style>
 </head>
 <body>
 
 <div id="loader">
     <div class="spinner"></div>
-    Uploading securely to cloud...
+    AI Security Scan Active...
 </div>
 
 <div class="upload-box">
     <h1>Post an Item</h1>
-    <?php if ($error) echo "<div style='color:#F87171; text-align:center; margin-bottom:15px; background: rgba(248,113,113,0.1); padding: 10px; border-radius: 10px;'>$error</div>"; ?>
+    <?php if ($error) echo "<div style='color:#F87171; text-align:left; margin-bottom:15px; background: rgba(248,113,113,0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(248,113,113,0.3); font-size: 0.95rem; line-height: 1.5;'>$error</div>"; ?>
 
     <form action="post_item.php" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('loader').style.display = 'flex';">
         <div class="input-group">
@@ -125,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div class="input-group">
             <label>Item Name</label>
-            <div class="input-wrapper"><input type="text" name="title" required></div>
+            <div class="input-wrapper"><input type="text" name="title" required autocomplete="off"></div>
         </div>
 
         <div class="input-group">
@@ -155,6 +197,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <button type="submit" class="btn-submit">List Item</button>
     </form>
+    
+    <div class="ai-shield">
+        🛡️ Guided by Real-Time AI Vision Security
+    </div>
+    
     <a href="index.php" class="btn-cancel">Cancel</a>
 </div>
 
