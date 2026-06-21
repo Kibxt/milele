@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
         
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,weapon', // Syntax requirement patched
+            'models' => 'nudity-2.0,weapon', // Syntax requirement successfully patched
             'api_user' => $sightengine_user,
             'api_secret' => $sightengine_secret,
             'media' => $cfile
