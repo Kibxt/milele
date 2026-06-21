@@ -1,5 +1,5 @@
 <?php
-// MILELE - Profile Dashboard (With Cloud Images & Admin Gate)
+// MILELE - Profile Dashboard (With Premium Dispute Modal)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -68,7 +68,6 @@ try {
         .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; display: flex; flex-direction: column; }
         .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
         
-        /* The Uniform Image Fix */
         .item-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 12px; margin-bottom: 15px; background: rgba(255,255,255,0.05); }
 
         .item-title { font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; }
@@ -85,15 +84,24 @@ try {
         th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
         td { padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: #ccc; }
         .code-box { background: rgba(0,0,0,0.5); border: 1px solid rgba(45,212,191,0.3); padding: 5px 10px; border-radius: 6px; color: #2DD4BF; font-family: monospace; font-weight: bold; letter-spacing: 2px; }
+        
         .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: bold;}
         .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.2); }
         .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
-        .status-disputed { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .status-disputed { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4); animation: pulse 2s infinite; }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
 
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
         .modal-overlay.active .modal-box { transform: translateY(0); }
+        
+        .btn-modal-action { flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; border: none; font-size: 1rem; }
     </style>
 </head>
 <body>
@@ -140,7 +148,7 @@ try {
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
                     <div class="card-controls">
                         <a href="edit_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-edit">Edit</a>
-                        <button onclick="openModal(<?php echo $item['listing_id']; ?>)" class="btn-delete">Remove</button>
+                        <button onclick="openDeleteModal(<?php echo $item['listing_id']; ?>)" class="btn-delete">Remove</button>
                     </div>
                 </div>
             <?php endforeach; ?>
@@ -195,10 +203,7 @@ try {
                                     <div style="display: flex; gap: 8px;">
                                         <button onclick="openGuideModal()" style="background:none; border:1px solid rgba(255,255,255,0.2); color:#ccc; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">ℹ️ Guide</button>
                                         
-                                        <form action="dispute_transaction.php" method="POST" onsubmit="return confirm('Are you sure you want to report an issue? This will freeze the funds and alert the Admin.');">
-                                            <input type="hidden" name="transaction_id" value="<?php echo $deal['transaction_id']; ?>">
-                                            <button type="submit" style="background:rgba(248, 113, 113, 0.1); border:1px solid rgba(248, 113, 113, 0.3); color:#F87171; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">🚨 Report Issue</button>
-                                        </form>
+                                        <button onclick="openDisputeModal(<?php echo $deal['transaction_id']; ?>)" style="background:rgba(248, 113, 113, 0.1); border:1px solid rgba(248, 113, 113, 0.3); color:#F87171; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">🚨 Report Issue</button>
                                     </div>
                                 <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
                                     <span style="color: #666; font-size: 0.8rem;">Admin Reviewing</span>
@@ -218,8 +223,8 @@ try {
         <div style="font-size: 1.5rem; margin-bottom: 10px; color: #fff;">Remove Item?</div>
         <div style="color: #888; margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5;">This will hide your item from the global marketplace. Past receipts will be preserved.</div>
         <div style="display: flex; gap: 15px;">
-            <button onclick="closeModal()" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold;">Cancel</button>
-            <a href="#" id="confirmDeleteBtn" style="flex: 1; padding: 12px; background: #F87171; color: #000; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; text-decoration: none;">Remove</a>
+            <button onclick="closeDeleteModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
+            <a href="#" id="confirmDeleteBtn" class="btn-modal-action" style="background: #F87171; color: #000; text-decoration: none; display: flex; align-items: center; justify-content: center;">Remove</a>
         </div>
     </div>
 </div>
@@ -229,25 +234,60 @@ try {
         <div style="text-align: center; color: #2DD4BF; font-size: 1.5rem; margin-bottom: 10px;">How Handover Works</div>
         <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot get paid until you provide your 4-digit PIN.</p>
         <div style="margin-bottom: 15px;"><strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span></div>
-        <div style="margin-bottom: 15px;"><strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches the listing exactly.</span></div>
+        <div style="margin-bottom: 15px;"><strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches exactly.</span></div>
         <div style="margin-bottom: 25px;"><strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your PIN when you have the item in your hands. This completes the sale.</span></div>
-        <button onclick="closeGuideModal()" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold;">Understood</button>
+        <button onclick="closeGuideModal()" class="btn-modal-action" style="width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Understood</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="disputeModal">
+    <div class="modal-box" style="border: 1px solid rgba(239, 68, 68, 0.3);">
+        <div style="font-size: 3rem; margin-bottom: 15px;">🚨</div>
+        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #F87171; font-weight: bold;">Emergency Freeze</div>
+        <p style="color: #888; font-size: 0.95rem; margin-bottom: 25px; line-height: 1.6; text-align: left;">
+            This action will instantly lock the funds in the vault and alert the Admin Team. 
+            <br><br>
+            <strong style="color: #fff;">Only proceed if:</strong><br>
+            • The seller failed to show up.<br>
+            • The item is broken, counterfeit, or incorrect.<br>
+            • You feel unsafe completing the transaction.
+        </p>
+        
+        <form action="dispute_transaction.php" method="POST" style="display: flex; gap: 15px; margin: 0;">
+            <input type="hidden" name="transaction_id" id="disputeTxId" value="">
+            
+            <button type="button" onclick="closeDisputeModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
+            <button type="submit" class="btn-modal-action" style="background: #F87171; color: #000;">Freeze Funds</button>
+        </form>
     </div>
 </div>
 
 <script>
+    // Delete Modal Logic
     const deleteModal = document.getElementById('deleteModal');
     const confirmBtn = document.getElementById('confirmDeleteBtn');
-    function openModal(listingId) { confirmBtn.href = "delete_listing.php?id=" + listingId; deleteModal.classList.add('active'); }
-    function closeModal() { deleteModal.classList.remove('active'); setTimeout(() => confirmBtn.href = "#", 300); }
+    function openDeleteModal(listingId) { confirmBtn.href = "delete_listing.php?id=" + listingId; deleteModal.classList.add('active'); }
+    function closeDeleteModal() { deleteModal.classList.remove('active'); setTimeout(() => confirmBtn.href = "#", 300); }
     
+    // Guide Modal Logic
     const guideModal = document.getElementById('guideModal');
     function openGuideModal() { guideModal.classList.add('active'); }
     function closeGuideModal() { guideModal.classList.remove('active'); }
 
+    // Premium Dispute Modal Logic
+    const disputeModal = document.getElementById('disputeModal');
+    const disputeTxInput = document.getElementById('disputeTxId');
+    function openDisputeModal(txId) { 
+        disputeTxInput.value = txId; // Inject the transaction ID into the form
+        disputeModal.classList.add('active'); 
+    }
+    function closeDisputeModal() { disputeModal.classList.remove('active'); }
+
+    // Close Modals on Background Click
     window.addEventListener('click', function(e) {
-        if (e.target === deleteModal) closeModal();
+        if (e.target === deleteModal) closeDeleteModal();
         if (e.target === guideModal) closeGuideModal();
+        if (e.target === disputeModal) closeDisputeModal();
     });
 </script>
 
