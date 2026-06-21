@@ -33,11 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
         
-        // Forcing exact Mime-Type and Filename for strict AI recognition
         $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
         
+        // PATCH: Requesting the correct 'wad' (Weapons, Alcohol, Drugs) model
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,weapon', // Syntax requirement successfully patched
+            'models' => 'nudity-2.0,wad', 
             'api_user' => $sightengine_user,
             'api_secret' => $sightengine_secret,
             'media' => $cfile
@@ -49,16 +49,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $ai_result = json_decode($ai_response_raw, true);
 
-        // Analyze the AI's verdict
         $is_safe = true;
         
         if ($ai_response_raw === false) {
             $error = "Security scan failed: Server timeout. Please try again.";
             $is_safe = false;
         } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
-            if ($ai_result['weapon'] > 0.5 || $ai_result['nudity']['safe'] < 0.5) {
+            
+            // PATCH: Correctly extracting the new API response keys
+            $weapon_score = isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0;
+            
+            // In nudity-2.0, 'none' means the image has no nudity. 
+            // We default to 1 (safe) if the API glitches, to prevent false bans.
+            $nudity_none_score = isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1;
+
+            // If weapon probability is high OR the probability of "no nudity" is low, flag it
+            if ($weapon_score > 0.5 || $nudity_none_score < 0.5) {
                 $is_safe = false;
             }
+            
         } else {
             $error = "Security scan failed. Please try again.";
             $is_safe = false;
