@@ -1,5 +1,5 @@
 <?php
-// MILELE - Login Gateway (With Ban Enforcement & Strike Reset)
+// MILELE - Login Gateway (With Auto-Patching & Ban Enforcement)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -9,6 +9,13 @@ if (isset($_SESSION['user_id'])) {
 }
 
 require 'db.php';
+
+// ==========================================
+// 🛠️ SILENT DATABASE UPGRADES
+// ==========================================
+// We force the database to create these columns if they don't exist yet before anyone tries to log in.
+try { $pdo->exec("ALTER TABLE users ADD COLUMN banned_until DATETIME DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {}
 
 $error = '';
 
@@ -49,7 +56,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $error = "Invalid email or password.";
             }
         } catch (PDOException $e) {
-            $error = "System error. Please try again later.";
+            // UNMASKED ERROR: We now print the exact database error instead of flying blind.
+            $error = "System Error: " . htmlspecialchars($e->getMessage());
         }
     } else {
         $error = "Please fill in both fields.";
