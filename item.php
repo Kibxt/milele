@@ -1,5 +1,5 @@
 <?php
-// MILELE - Detailed Item Page (Photo Gallery & JSON Array Supported)
+// MILELE - Detailed Item Page (Interactive Slider & Uncropped Images)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -26,14 +26,13 @@ try {
         die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>This item is no longer available.</div>");
     }
 
-    // --- JSON IMAGE EXTRACTOR ---
     $images = [];
     $decoded_images = json_decode($item['image_path'], true);
     
     if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_images) && count($decoded_images) > 0) {
         $images = $decoded_images;
     } elseif (!empty($item['image_path'])) {
-        $images[] = $item['image_path']; // Fallback for older single-image posts
+        $images[] = $item['image_path'];
     } else {
         $images[] = 'https://via.placeholder.com/800x800/111111/333333?text=MILELE';
     }
@@ -62,17 +61,25 @@ try {
             .product-grid { grid-template-columns: 1fr; padding: 20px; }
         }
 
-        /* Photo Gallery Styling */
+        /* Upgraded Interactive Slider Styling */
         .gallery-container { display: flex; flex-direction: column; gap: 15px; }
-        .main-image-wrapper { width: 100%; aspect-ratio: 1/1; border-radius: 24px; overflow: hidden; background: #111; border: 1px solid rgba(255,255,255,0.1); position: relative;}
-        .product-image { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.3s; }
+        .main-image-wrapper { width: 100%; aspect-ratio: 1/1; border-radius: 24px; overflow: hidden; background: #0a0a0a; border: 1px solid rgba(255,255,255,0.1); position: relative; display: flex; align-items: center; justify-content: center;}
         
-        .thumbnail-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        /* FIXED: object-fit changed to contain to prevent cropping */
+        .product-image { width: 100%; height: 100%; object-fit: contain; transition: opacity 0.3s; }
+        
+        /* The Next/Prev Floating Arrows */
+        .slider-btn { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); color: #fff; border: 1px solid rgba(255,255,255,0.2); width: 45px; height: 45px; border-radius: 50%; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; z-index: 10; padding: 0;}
+        .slider-btn:hover { background: #2DD4BF; color: #000; border-color: #2DD4BF;}
+        .btn-prev { left: 15px; }
+        .btn-next { right: 15px; }
+
+        .thumbnail-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; scroll-behavior: smooth;}
         .thumbnail-row::-webkit-scrollbar { height: 6px; }
         .thumbnail-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
         
-        .thumb-img { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; cursor: pointer; border: 2px solid transparent; opacity: 0.6; transition: 0.2s; background: #111; flex-shrink: 0;}
-        .thumb-img:hover { opacity: 1; }
+        .thumb-img { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; cursor: pointer; border: 2px solid transparent; opacity: 0.4; transition: 0.2s; background: #111; flex-shrink: 0;}
+        .thumb-img:hover { opacity: 0.8; }
         .thumb-img.active { border-color: #2DD4BF; opacity: 1; }
 
         .product-info { display: flex; flex-direction: column; }
@@ -109,15 +116,21 @@ try {
         
         <div class="gallery-container">
             <div class="main-image-wrapper">
+                <?php if (count($images) > 1): ?>
+                    <button class="slider-btn btn-prev" onclick="changeImage(-1)">&#10094;</button>
+                    <button class="slider-btn btn-next" onclick="changeImage(1)">&#10095;</button>
+                <?php endif; ?>
+                
                 <img src="<?php echo htmlspecialchars($images[0]); ?>" id="mainDisplayImage" class="product-image" alt="Item Image">
             </div>
             
             <?php if (count($images) > 1): ?>
-                <div class="thumbnail-row">
+                <div class="thumbnail-row" id="thumbnailRow">
                     <?php foreach ($images as $index => $img): ?>
                         <img src="<?php echo htmlspecialchars($img); ?>" 
                              class="thumb-img <?php echo $index === 0 ? 'active' : ''; ?>" 
-                             onclick="switchImage(this, '<?php echo htmlspecialchars($img); ?>')">
+                             data-index="<?php echo $index; ?>"
+                             onclick="jumpToImage(<?php echo $index; ?>)">
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -160,18 +173,42 @@ try {
 <?php include 'footer.php'; ?>
 
 <script>
-    function switchImage(thumbnailElement, newSrc) {
-        // Change the main large image
-        document.getElementById('mainDisplayImage').src = newSrc;
+    // Inject the PHP array securely into the JavaScript engine
+    const galleryImages = <?php echo json_encode($images); ?>;
+    let currentIndex = 0;
+
+    function changeImage(direction) {
+        currentIndex += direction;
         
-        // Remove the 'active' glowing border from all thumbnails
+        // Loop back to the end/beginning seamlessly
+        if (currentIndex < 0) {
+            currentIndex = galleryImages.length - 1;
+        } else if (currentIndex >= galleryImages.length) {
+            currentIndex = 0;
+        }
+        updateGalleryUI();
+    }
+
+    function jumpToImage(index) {
+        currentIndex = index;
+        updateGalleryUI();
+    }
+
+    function updateGalleryUI() {
+        // Change the main image
+        document.getElementById('mainDisplayImage').src = galleryImages[currentIndex];
+        
+        // Remove active state from all thumbnails
         let thumbs = document.getElementsByClassName('thumb-img');
         for (let i = 0; i < thumbs.length; i++) {
             thumbs[i].classList.remove('active');
         }
         
-        // Add the 'active' border to the clicked thumbnail
-        thumbnailElement.classList.add('active');
+        // Highlight the active thumbnail and automatically scroll it into view
+        if(thumbs[currentIndex]) {
+            thumbs[currentIndex].classList.add('active');
+            thumbs[currentIndex].scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }
     }
 </script>
 

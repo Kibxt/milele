@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Global Feed (JSON Array Supported)
+// MILELE - Premium Global Feed (Uncropped Thumbnails & JSON Array Supported)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -68,7 +68,8 @@ try {
         .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; text-decoration: none;}
         .card:hover { transform: translateY(-5px); border-color: rgba(45,212,191,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
         
-        .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #111; border-bottom: 1px solid rgba(255,255,255,0.05);}
+        /* FIXED: object-fit changed to contain to prevent cropping */
+        .card-img { width: 100%; aspect-ratio: 1/1; object-fit: contain; background: #0a0a0a; border-bottom: 1px solid rgba(255,255,255,0.05);}
         
         .card-body { padding: 20px; display: flex; flex-direction: column; flex-grow: 1; }
         .card-cat { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
@@ -142,9 +143,6 @@ try {
     <?php else: ?>
         <div class="grid">
             <?php foreach ($items as $item): 
-                
-                // --- JSON ARRAY DECODER ---
-                // Silently unpacks the multi-image array and grabs the first image
                 $decoded_images = json_decode($item['image_path'], true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_images) && count($decoded_images) > 0) {
                     $thumbnail = $decoded_images[0];
