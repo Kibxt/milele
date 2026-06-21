@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Split-Screen Inbox (With Profile Links)
+// MILELE - Premium Split-Screen Inbox (Diagnostic Engine Active)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,6 +13,7 @@ $my_id = $_SESSION['user_id'];
 $active_user_id = filter_input(INPUT_GET, 'user', FILTER_VALIDATE_INT);
 $listing_context = filter_input(INPUT_GET, 'listing', FILTER_VALIDATE_INT);
 
+// 🛠️ SILENT DATABASE UPGRADE
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
         message_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -23,58 +24,81 @@ try {
         is_read TINYINT(1) DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
-} catch (PDOException $e) {}
+} catch (PDOException $e) {
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Table Creation Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+}
 
+// 📨 SEND MESSAGE LOGIC (Now wrapped in a diagnostic firewall)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $receiver_id = filter_input(INPUT_POST, 'receiver_id', FILTER_VALIDATE_INT);
-    $msg_text = trim($_POST['message']); 
+    $msg_text = isset($_POST['message']) ? trim($_POST['message']) : ''; 
     $list_id = filter_input(INPUT_POST, 'listing_id', FILTER_VALIDATE_INT);
 
     if ($receiver_id && !empty($msg_text)) {
-        $clean_text = htmlspecialchars($msg_text, ENT_QUOTES, 'UTF-8');
-        $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, listing_id, message_text, created_at) VALUES (?, ?, ?, ?, NOW())");
-        $stmt->execute([$my_id, $receiver_id, $list_id ? $list_id : null, $clean_text]);
-        
-        header("Location: inbox.php?user=$receiver_id" . ($list_id ? "&listing=$list_id" : ""));
-        exit();
+        try {
+            $clean_text = htmlspecialchars($msg_text, ENT_QUOTES, 'UTF-8');
+            $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, listing_id, message_text, created_at) VALUES (?, ?, ?, ?, NOW())");
+            $stmt->execute([$my_id, $receiver_id, $list_id ? $list_id : null, $clean_text]);
+            
+            header("Location: inbox.php?user=$receiver_id" . ($list_id ? "&listing=$list_id" : ""));
+            exit();
+        } catch (PDOException $e) {
+            // UNMASKED: This will print the exact reason the send function crashed
+            die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Send Message Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+        }
     }
 }
 
+// 👁️ MARK MESSAGES AS READ
 if ($active_user_id) {
-    $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?")->execute([$active_user_id, $my_id]);
+    try {
+        $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?")->execute([$active_user_id, $my_id]);
+    } catch (PDOException $e) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Update Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+    }
 }
 
-$stmt_convos = $pdo->prepare("
-    SELECT u.user_id, u.full_name,
-        (SELECT message_text FROM messages WHERE (sender_id = u.user_id AND receiver_id = :my_id) OR (sender_id = :my_id AND receiver_id = u.user_id) ORDER BY created_at DESC LIMIT 1) as last_msg,
-        (SELECT COUNT(*) FROM messages WHERE sender_id = u.user_id AND receiver_id = :my_id AND is_read = 0) as unread
-    FROM users u
-    WHERE u.user_id IN (
-        SELECT sender_id FROM messages WHERE receiver_id = :my_id
-        UNION
-        SELECT receiver_id FROM messages WHERE sender_id = :my_id
-    )
-    ORDER BY (SELECT MAX(created_at) FROM messages WHERE (sender_id = u.user_id AND receiver_id = :my_id) OR (sender_id = :my_id AND receiver_id = u.user_id)) DESC
-");
-$stmt_convos->execute([':my_id' => $my_id]);
-$conversations = $stmt_convos->fetchAll();
+// 🗂️ FETCH CONVERSATIONS (SIDEBAR)
+try {
+    $stmt_convos = $pdo->prepare("
+        SELECT u.user_id, u.full_name,
+            (SELECT message_text FROM messages WHERE (sender_id = u.user_id AND receiver_id = :my_id) OR (sender_id = :my_id AND receiver_id = u.user_id) ORDER BY created_at DESC LIMIT 1) as last_msg,
+            (SELECT COUNT(*) FROM messages WHERE sender_id = u.user_id AND receiver_id = :my_id AND is_read = 0) as unread
+        FROM users u
+        WHERE u.user_id IN (
+            SELECT sender_id FROM messages WHERE receiver_id = :my_id
+            UNION
+            SELECT receiver_id FROM messages WHERE sender_id = :my_id
+        )
+        ORDER BY (SELECT MAX(created_at) FROM messages WHERE (sender_id = u.user_id AND receiver_id = :my_id) OR (sender_id = :my_id AND receiver_id = u.user_id)) DESC
+    ");
+    $stmt_convos->execute([':my_id' => $my_id]);
+    $conversations = $stmt_convos->fetchAll();
+} catch (PDOException $e) {
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Sidebar Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+}
 
+// 💬 FETCH ACTIVE CHAT
 $chat_history = [];
 $active_user_name = "Select a conversation";
 
 if ($active_user_id) {
-    $stmt_name = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
-    $stmt_name->execute([$active_user_id]);
-    $active_user_name = $stmt_name->fetchColumn() ?: "Unknown User";
+    try {
+        $stmt_name = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
+        $stmt_name->execute([$active_user_id]);
+        $active_user_name = $stmt_name->fetchColumn() ?: "Unknown User";
 
-    $stmt_chat = $pdo->prepare("
-        SELECT * FROM messages 
-        WHERE (sender_id = :me AND receiver_id = :them) 
-           OR (sender_id = :them AND receiver_id = :me)
-        ORDER BY created_at ASC
-    ");
-    $stmt_chat->execute([':me' => $my_id, ':them' => $active_user_id]);
-    $chat_history = $stmt_chat->fetchAll();
+        $stmt_chat = $pdo->prepare("
+            SELECT * FROM messages 
+            WHERE (sender_id = :me AND receiver_id = :them) 
+               OR (sender_id = :them AND receiver_id = :me)
+            ORDER BY created_at ASC
+        ");
+        $stmt_chat->execute([':me' => $my_id, ':them' => $active_user_id]);
+        $chat_history = $stmt_chat->fetchAll();
+    } catch (PDOException $e) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Chat Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+    }
 }
 
 function formatChatMessage($text) {
