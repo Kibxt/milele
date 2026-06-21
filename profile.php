@@ -1,5 +1,5 @@
 <?php
-// MILELE - Profile Dashboard (With Secret Admin Door)
+// MILELE - Profile Dashboard (With Dispute Engine & Admin Gate)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -9,21 +9,17 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 require 'db.php';
-
 $user_id = $_SESSION['user_id'];
 
 try {
-    // 1. Fetch User Details (NOW INCLUDING 'is_admin')
     $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at, is_admin FROM users WHERE user_id = :id");
     $stmt->execute([':id' => $user_id]);
     $user = $stmt->fetch();
 
-    // 2. Fetch Active Inventory
     $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
     $stmt_listings->execute([':id' => $user_id]);
     $my_listings = $stmt_listings->fetchAll();
 
-    // 3. Fetch Purchase History
     $stmt_history = $pdo->prepare("
         SELECT t.*, l.title, u.full_name as seller_name 
         FROM escrow_transactions t
@@ -47,11 +43,11 @@ try {
     <title>Profile | MILELE</title>
     <style>
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
+        .container { max-width: 1000px; margin: 0 auto; }
         
         .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
         .nav-bar h1 { color: #fff; margin: 0; font-size: 2rem; }
-        .nav-buttons { display: flex; gap: 15px; }
+        .nav-buttons { display: flex; gap: 15px; flex-wrap: wrap; justify-content: flex-end;}
         .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.9rem; }
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
         .btn-accent { background: #2DD4BF; color: #000; border: none; font-weight: bold; }
@@ -68,9 +64,13 @@ try {
 
         .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; margin-top: 40px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
         .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; display: flex; flex-direction: column; }
         .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
+        
+        /* The Uniform Image Fix */
+        .item-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 12px; margin-bottom: 15px; background: rgba(255,255,255,0.05); }
+
         .item-title { font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; }
         .item-price { color: #2DD4BF; margin-bottom: 15px; }
         
@@ -85,22 +85,15 @@ try {
         th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
         td { padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: #ccc; }
         .code-box { background: rgba(0,0,0,0.5); border: 1px solid rgba(45,212,191,0.3); padding: 5px 10px; border-radius: 6px; color: #2DD4BF; font-family: monospace; font-weight: bold; letter-spacing: 2px; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; }
-        .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; }
+        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: bold;}
+        .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.2); }
         .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
+        .status-disputed { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4); }
 
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
         .modal-overlay.active { display: flex; opacity: 1; }
         .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
         .modal-overlay.active .modal-box { transform: translateY(0); }
-        .modal-icon { font-size: 3rem; margin-bottom: 15px; }
-        .modal-title { font-size: 1.5rem; margin-bottom: 10px; color: #fff; }
-        .modal-text { color: #888; margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5; }
-        .modal-actions { display: flex; gap: 15px; }
-        .btn-cancel { flex: 1; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-        .btn-cancel:hover { background: rgba(255,255,255,0.1); }
-        .btn-confirm-del { flex: 1; padding: 12px; background: #F87171; color: #000; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; text-decoration: none; transition: 0.2s; }
-        .btn-confirm-del:hover { background: #fff; }
     </style>
 </head>
 <body>
@@ -140,6 +133,7 @@ try {
         <div class="grid">
             <?php foreach ($my_listings as $item): ?>
                 <div class="item-card">
+                    <img src="https://via.placeholder.com/400x400/111111/333333?text=MILELE+Item" alt="Item">
                     <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
                     <div class="card-controls">
@@ -179,6 +173,8 @@ try {
                             <td>
                                 <?php if ($deal['transaction_status'] === 'funded' && !empty($deal['escrow_pin'])): ?>
                                     <span class="code-box"><?php echo htmlspecialchars($deal['escrow_pin']); ?></span>
+                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
+                                    <span style="color: #EF4444; text-decoration: line-through;">FROZEN</span>
                                 <?php else: ?>
                                     <span style="color: #666;">Cleared</span>
                                 <?php endif; ?>
@@ -186,13 +182,24 @@ try {
                             <td>
                                 <?php if ($deal['transaction_status'] === 'funded'): ?>
                                     <span class="status-badge status-funded">Secured</span>
+                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
+                                    <span class="status-badge status-disputed">Disputed</span>
                                 <?php else: ?>
                                     <span class="status-badge status-released">Completed</span>
                                 <?php endif; ?>
                             </td>
                             <td>
                                 <?php if ($deal['transaction_status'] === 'funded'): ?>
-                                    <button onclick="openGuideModal()" style="background:none; border:1px solid rgba(255,255,255,0.2); color:#ccc; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">ℹ️ Guide</button>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button onclick="openGuideModal()" style="background:none; border:1px solid rgba(255,255,255,0.2); color:#ccc; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">ℹ️ Guide</button>
+                                        
+                                        <form action="dispute_transaction.php" method="POST" onsubmit="return confirm('Are you sure you want to report an issue? This will freeze the funds and alert the Admin.');">
+                                            <input type="hidden" name="transaction_id" value="<?php echo $deal['transaction_id']; ?>">
+                                            <button type="submit" style="background:rgba(248, 113, 113, 0.1); border:1px solid rgba(248, 113, 113, 0.3); color:#F87171; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">🚨 Report Issue</button>
+                                        </form>
+                                    </div>
+                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
+                                    <span style="color: #666; font-size: 0.8rem;">Admin Reviewing</span>
                                 <?php endif; ?>
                             </td>
                         </tr>
@@ -205,51 +212,34 @@ try {
 
 <div class="modal-overlay" id="deleteModal">
     <div class="modal-box">
-        <div class="modal-icon">🗑️</div>
-        <div class="modal-title">Remove Item?</div>
-        <div class="modal-text">This will hide your item from the global marketplace. Past receipts will be preserved. This action cannot be undone.</div>
-        <div class="modal-actions">
-            <button onclick="closeModal()" class="btn-cancel">Cancel</button>
-            <a href="#" id="confirmDeleteBtn" class="btn-confirm-del">Yes, Remove it</a>
+        <div style="font-size: 3rem; margin-bottom: 15px;">🗑️</div>
+        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #fff;">Remove Item?</div>
+        <div style="color: #888; margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5;">This will hide your item from the global marketplace. Past receipts will be preserved.</div>
+        <div style="display: flex; gap: 15px;">
+            <button onclick="closeModal()" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold;">Cancel</button>
+            <a href="#" id="confirmDeleteBtn" style="flex: 1; padding: 12px; background: #F87171; color: #000; border: none; border-radius: 12px; cursor: pointer; font-weight: bold; text-decoration: none;">Remove</a>
         </div>
     </div>
 </div>
 
 <div class="modal-overlay" id="guideModal">
     <div class="modal-box" style="text-align: left;">
-        <div class="modal-title" style="text-align: center; color: #2DD4BF;">How Handover Works</div>
+        <div style="text-align: center; color: #2DD4BF; font-size: 1.5rem; margin-bottom: 10px;">How Handover Works</div>
         <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot get paid until you provide your 4-digit PIN.</p>
-        
-        <div style="margin-bottom: 15px;">
-            <strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span>
-        </div>
-        <div style="margin-bottom: 15px;">
-            <strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches the listing exactly.</span>
-        </div>
-        <div style="margin-bottom: 25px;">
-            <strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your PIN when you have the item in your hands. This completes the sale.</span>
-        </div>
-        
-        <button onclick="closeGuideModal()" class="btn-cancel" style="width: 100%;">Understood</button>
+        <div style="margin-bottom: 15px;"><strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span></div>
+        <div style="margin-bottom: 15px;"><strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches the listing exactly.</span></div>
+        <div style="margin-bottom: 25px;"><strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your PIN when you have the item in your hands. This completes the sale.</span></div>
+        <button onclick="closeGuideModal()" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; cursor: pointer; font-weight: bold;">Understood</button>
     </div>
 </div>
 
 <script>
     const deleteModal = document.getElementById('deleteModal');
     const confirmBtn = document.getElementById('confirmDeleteBtn');
-
-    function openModal(listingId) {
-        confirmBtn.href = "delete_listing.php?id=" + listingId;
-        deleteModal.classList.add('active');
-    }
-
-    function closeModal() {
-        deleteModal.classList.remove('active');
-        setTimeout(() => confirmBtn.href = "#", 300);
-    }
-
-    const guideModal = document.getElementById('guideModal');
+    function openModal(listingId) { confirmBtn.href = "delete_listing.php?id=" + listingId; deleteModal.classList.add('active'); }
+    function closeModal() { deleteModal.classList.remove('active'); setTimeout(() => confirmBtn.href = "#", 300); }
     
+    const guideModal = document.getElementById('guideModal');
     function openGuideModal() { guideModal.classList.add('active'); }
     function closeGuideModal() { guideModal.classList.remove('active'); }
 

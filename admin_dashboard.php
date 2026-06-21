@@ -12,33 +12,21 @@ require 'db.php';
 $user_id = $_SESSION['user_id'];
 
 try {
-    // 1. Security Check: Ensure the user is actually an Admin
     $stmt_check = $pdo->prepare("SELECT is_admin FROM users WHERE user_id = :id");
     $stmt_check->execute([':id' => $user_id]);
     $admin_check = $stmt_check->fetch();
 
     if (!$admin_check || $admin_check['is_admin'] != 1) {
-        // Kicks regular users back to the homepage if they try to guess this URL
         header("Location: index.php");
         exit();
     }
 
-    // 2. Fetch God-Mode Metrics
     $stats = [];
-    
-    // Total Users
     $stats['users'] = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-    
-    // Active Listings
     $stats['listings'] = $pdo->query("SELECT COUNT(*) FROM listings WHERE listing_status = 'active'")->fetchColumn();
-    
-    // Total Cleared Volume (Money that has successfully passed through MILELE)
     $stats['volume'] = $pdo->query("SELECT COALESCE(SUM(total_amount), 0) FROM escrow_transactions WHERE transaction_status = 'released'")->fetchColumn();
-    
-    // Current Vault Balance (Money currently locked in Escrow)
-    $stats['vault'] = $pdo->query("SELECT COALESCE(SUM(total_amount), 0) FROM escrow_transactions WHERE transaction_status = 'funded'")->fetchColumn();
+    $stats['vault'] = $pdo->query("SELECT COALESCE(SUM(total_amount), 0) FROM escrow_transactions WHERE transaction_status = 'funded' OR transaction_status = 'disputed'")->fetchColumn();
 
-    // 3. Fetch the Global Ledger (All transactions)
     $stmt_ledger = $pdo->query("
         SELECT t.*, l.title, b.full_name as buyer_name, s.full_name as seller_name 
         FROM escrow_transactions t
@@ -61,7 +49,7 @@ try {
     <title>God-Mode | MILELE Admin</title>
     <style>
         body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; background-image: radial-gradient(circle at 50% 0%, rgba(45, 212, 191, 0.05), transparent 60%); }
-        .container { max-width: 1100px; margin: 0 auto; }
+        .container { max-width: 1200px; margin: 0 auto; }
         
         .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px;}
         .nav-bar h1 { color: #fff; margin: 0; font-size: 2.2rem; letter-spacing: -1px; display: flex; align-items: center; gap: 10px;}
@@ -69,7 +57,6 @@ try {
         .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.9rem; }
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
 
-        /* Metric Cards Grid */
         .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 40px; }
         .metric-card { background: rgba(255,255,255,0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.05); padding: 30px 20px; border-radius: 24px; text-align: center; transition: 0.3s; }
         .metric-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
@@ -79,7 +66,6 @@ try {
 
         .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Premium Ledger Table */
         .ledger-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; text-align: left; }
         th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
@@ -92,14 +78,10 @@ try {
         .status-failed { background: rgba(248, 113, 113, 0.1); color: #F87171; }
         .status-disputed { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4); animation: pulse 2s infinite; }
 
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
 
         .action-group { display: flex; gap: 8px; }
-        .btn-admin-action { padding: 6px 12px; border-radius: 8px; border: none; font-size: 0.8rem; font-weight: bold; cursor: pointer; text-decoration: none; transition: 0.2s; }
+        .btn-admin-action { padding: 6px 12px; border-radius: 8px; border: none; font-size: 0.8rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-refund { background: rgba(248, 113, 113, 0.1); color: #F87171; border: 1px solid rgba(248, 113, 113, 0.2); }
         .btn-refund:hover { background: #F87171; color: #000; }
         .btn-force { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; border: 1px solid rgba(45, 212, 191, 0.2); }
@@ -111,26 +93,14 @@ try {
 <div class="container">
     <div class="nav-bar">
         <h1><span class="crown-icon">👑</span> Executive Terminal</h1>
-        <a href="index.php" class="btn-glass">← Back to Market</a>
+        <a href="profile.php" class="btn-glass">← Back to Profile</a>
     </div>
 
     <div class="metrics-grid">
-        <div class="metric-card">
-            <div class="metric-title">Platform Users</div>
-            <div class="metric-value"><?php echo number_format($stats['users']); ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-title">Active Listings</div>
-            <div class="metric-value"><?php echo number_format($stats['listings']); ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-title">Escrow Vault (Live)</div>
-            <div class="metric-value highlight-value"><span style="font-size:1.2rem; color:#888;">KES</span> <?php echo number_format($stats['vault']); ?></div>
-        </div>
-        <div class="metric-card">
-            <div class="metric-title">Cleared Volume</div>
-            <div class="metric-value"><span style="font-size:1.2rem; color:#888;">KES</span> <?php echo number_format($stats['volume']); ?></div>
-        </div>
+        <div class="metric-card"><div class="metric-title">Platform Users</div><div class="metric-value"><?php echo number_format($stats['users']); ?></div></div>
+        <div class="metric-card"><div class="metric-title">Active Listings</div><div class="metric-value"><?php echo number_format($stats['listings']); ?></div></div>
+        <div class="metric-card"><div class="metric-title">Escrow Vault (Live)</div><div class="metric-value highlight-value"><span style="font-size:1.2rem; color:#888;">KES</span> <?php echo number_format($stats['vault']); ?></div></div>
+        <div class="metric-card"><div class="metric-title">Cleared Volume</div><div class="metric-value"><span style="font-size:1.2rem; color:#888;">KES</span> <?php echo number_format($stats['volume']); ?></div></div>
     </div>
 
     <div class="section-title">Global Transaction Ledger</div>
@@ -174,8 +144,17 @@ try {
                             <td>
                                 <?php if ($tx['transaction_status'] === 'funded' || $tx['transaction_status'] === 'disputed'): ?>
                                     <div class="action-group">
-                                        <button class="btn-admin-action btn-refund" onclick="alert('Refund Engine routing coming soon')">Refund Buyer</button>
-                                        <button class="btn-admin-action btn-force" onclick="alert('Force Payout routing coming soon')">Force Pay</button>
+                                        <form action="admin_resolve.php" method="POST" onsubmit="return confirm('WARNING: This will reverse the money to the BUYER via Safaricom B2C.');">
+                                            <input type="hidden" name="transaction_id" value="<?php echo $tx['transaction_id']; ?>">
+                                            <input type="hidden" name="action" value="refund">
+                                            <button type="submit" class="btn-admin-action btn-refund">Refund Buyer</button>
+                                        </form>
+
+                                        <form action="admin_resolve.php" method="POST" onsubmit="return confirm('WARNING: This will release the money to the SELLER via Safaricom B2C.');">
+                                            <input type="hidden" name="transaction_id" value="<?php echo $tx['transaction_id']; ?>">
+                                            <input type="hidden" name="action" value="force_pay">
+                                            <button type="submit" class="btn-admin-action btn-force">Force Pay</button>
+                                        </form>
                                     </div>
                                 <?php else: ?>
                                     <span style="color: #444; font-size: 0.8rem;">Locked</span>
