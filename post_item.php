@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (With Item Format & Auto-Patch)
+// MILELE - Premium Item Upload Terminal (Multi-Image Array & AI Loop)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -15,123 +15,144 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = filter_input(INPUT_POST, 'title', FILTER_SANITIZE_SPECIAL_CHARS);
     $price = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
     $category = filter_input(INPUT_POST, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
-    $item_type = filter_input(INPUT_POST, 'item_type', FILTER_SANITIZE_SPECIAL_CHARS); // NEW: Item Format
+    $item_type = filter_input(INPUT_POST, 'item_type', FILTER_SANITIZE_SPECIAL_CHARS);
     $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS);
     $seller_id = $_SESSION['user_id'];
     
-    $image_path = '';
-    
     // ==========================================
-    // 🛠️ SILENT DATABASE UPGRADE
+    // 🛠️ SILENT DATABASE UPGRADES
     // ==========================================
     try {
-        // Automatically adds the item_type column if it doesn't exist
+        // Ensure item_type exists
         $pdo->exec("ALTER TABLE listings ADD COLUMN item_type VARCHAR(50) DEFAULT 'Physical'");
-    } catch (PDOException $e) { /* Column already exists, proceed normally */ }
+    } catch (PDOException $e) {}
+    try {
+        // Upgrade image_path to TEXT to hold massive JSON arrays of 15 images
+        $pdo->exec("ALTER TABLE listings MODIFY image_path TEXT");
+    } catch (PDOException $e) {}
 
-    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+    $uploaded_urls = [];
+    $is_safe = true;
+
+    if (isset($_FILES['images']) && is_array($_FILES['images']['tmp_name'])) {
+        $file_count = count($_FILES['images']['tmp_name']);
         
-        // ==========================================
-        // 🚨 CHECKPOINT 1: SIGHTENGINE FULL SPECTRUM AI
-        // ==========================================
-        $sightengine_user = '1287637059';     
-        $sightengine_secret = 'vVLakzVx9WAHwqvg9o8p9ucggiu5byzJ'; 
-        
-        $ch_ai = curl_init('https://api.sightengine.com/1.0/check.json');
-        curl_setopt($ch_ai, CURLOPT_POST, true);
-        curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
-        
-        $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
-        
-        curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,wad,offensive,gore', 
-            'api_user' => $sightengine_user,
-            'api_secret' => $sightengine_secret,
-            'media' => $cfile
-        ));
-        
-        $ai_response_raw = curl_exec($ch_ai);
-        $curl_err = curl_error($ch_ai);
-        curl_close($ch_ai);
-        
-        $ai_result = json_decode($ai_response_raw, true);
-        $is_safe = true;
-        
-        if ($ai_response_raw === false) {
-            $error = "API Connection Failed: " . htmlspecialchars($curl_err);
+        if ($file_count > 15) {
+            $error = "Maximum of 15 images allowed. You selected $file_count.";
             $is_safe = false;
-        } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
-            
-            $weapon_score = isset($ai_result['weapon']) ? $ai_result['weapon'] : (isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0);
-            $alcohol_score = isset($ai_result['alcohol']) ? $ai_result['alcohol'] : (isset($ai_result['wad']['alcohol']) ? $ai_result['wad']['alcohol'] : 0);
-            $drugs_score = isset($ai_result['drugs']) ? $ai_result['drugs'] : (isset($ai_result['wad']['drugs']) ? $ai_result['wad']['drugs'] : 0);
-            
-            $offensive_score = isset($ai_result['offensive']['prob']) ? $ai_result['offensive']['prob'] : 0;
-            $gore_score = isset($ai_result['gore']['prob']) ? $ai_result['gore']['prob'] : 0;
-            $safe_score = isset($ai_result['nudity']['safe']) ? $ai_result['nudity']['safe'] : (isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1);
-
-            if ($weapon_score > 0.4 || $alcohol_score > 0.4 || $drugs_score > 0.4 || $offensive_score > 0.4 || $gore_score > 0.4 || $safe_score < 0.5) {
-                $is_safe = false;
-                
-                $w_pct = round($weapon_score * 100);
-                $a_pct = round($alcohol_score * 100);
-                $d_pct = round($drugs_score * 100);
-                $o_pct = round($offensive_score * 100);
-                $g_pct = round($gore_score * 100);
-                $explicit_pct = 100 - round($safe_score * 100);
-                
-                $error = "<strong>⚠️ UPLOAD REJECTED: Security Shield Triggered.</strong><br><br>The AI detected content violating our campus marketplace rules:<br><br>";
-                if ($w_pct > 40) $error .= "🔫 <strong>Weapons & Firearms:</strong> {$w_pct}% confidence<br>";
-                if ($a_pct > 40) $error .= "🍺 <strong>Alcoholic Beverages:</strong> {$a_pct}% confidence<br>";
-                if ($d_pct > 40) $error .= "💊 <strong>Drugs & Narcotics:</strong> {$d_pct}% confidence<br>";
-                if ($o_pct > 40) $error .= "🛑 <strong>Hate/Offensive Material:</strong> {$o_pct}% confidence<br>";
-                if ($g_pct > 40) $error .= "🩸 <strong>Graphic/Gore:</strong> {$g_pct}% confidence<br>";
-                if ($safe_score < 0.5) $error .= "🔞 <strong>Explicit/Adult Content:</strong> {$explicit_pct}% confidence<br>";
-                
-                $error .= "<br><span style='font-size:0.85rem; color:#aaa;'>If you believe this is a mistake, please adjust the image framing or lighting. Repeated violations will result in an automated ban.</span>";
-            }
         } else {
-            $api_error_msg = isset($ai_result['error']['message']) ? $ai_result['error']['message'] : json_encode($ai_result);
-            $error = "<strong>SIGHTENGINE ERROR:</strong> " . htmlspecialchars($api_error_msg);
-            $is_safe = false;
-        }
+            // LOOP THROUGH EVERY UPLOADED IMAGE
+            for ($i = 0; $i < $file_count; $i++) {
+                if ($_FILES['images']['error'][$i] === UPLOAD_ERR_OK) {
+                    
+                    $tmp_name = $_FILES['images']['tmp_name'][$i];
+                    $file_type = $_FILES['images']['type'][$i];
+                    $file_name = $_FILES['images']['name'][$i];
+                    $image_number = $i + 1;
 
-        // ==========================================
-        // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
-        // ==========================================
-        if ($is_safe) {
-            $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
-            
-            $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
-            
-            $ch_cloud = curl_init();
-            curl_setopt($ch_cloud, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
-            curl_setopt($ch_cloud, CURLOPT_POST, 1);
-            curl_setopt($ch_cloud, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
-            curl_setopt($ch_cloud, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch_cloud, CURLOPT_SSL_VERIFYPEER, false);
-            
-            $cloud_response = curl_exec($ch_cloud);
-            curl_close($ch_cloud);
-            
-            $cloud_result = json_decode($cloud_response, true);
-            
-            if (isset($cloud_result['data']['url'])) {
-                $image_path = $cloud_result['data']['url']; 
-            } else {
-                $error = "Cloud upload failed. Please try a different photo.";
+                    // ==========================================
+                    // 🚨 CHECKPOINT 1: SIGHTENGINE FULL SPECTRUM AI
+                    // ==========================================
+                    $sightengine_user = '1287637059';     
+                    $sightengine_secret = 'vVLakzVx9WAHwqvg9o8p9ucggiu5byzJ'; 
+                    
+                    $ch_ai = curl_init('https://api.sightengine.com/1.0/check.json');
+                    curl_setopt($ch_ai, CURLOPT_POST, true);
+                    curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
+                    curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
+                    
+                    $cfile = new CURLFile($tmp_name, $file_type, $file_name);
+                    
+                    curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
+                        'models' => 'nudity-2.0,wad,offensive,gore', 
+                        'api_user' => $sightengine_user,
+                        'api_secret' => $sightengine_secret,
+                        'media' => $cfile
+                    ));
+                    
+                    $ai_response_raw = curl_exec($ch_ai);
+                    $curl_err = curl_error($ch_ai);
+                    curl_close($ch_ai);
+                    
+                    $ai_result = json_decode($ai_response_raw, true);
+                    
+                    if ($ai_response_raw === false) {
+                        $error = "API Connection Failed on Image #$image_number: " . htmlspecialchars($curl_err);
+                        $is_safe = false;
+                        break; // Kill the loop instantly
+                    } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
+                        
+                        $weapon_score = isset($ai_result['weapon']) ? $ai_result['weapon'] : (isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0);
+                        $alcohol_score = isset($ai_result['alcohol']) ? $ai_result['alcohol'] : (isset($ai_result['wad']['alcohol']) ? $ai_result['wad']['alcohol'] : 0);
+                        $drugs_score = isset($ai_result['drugs']) ? $ai_result['drugs'] : (isset($ai_result['wad']['drugs']) ? $ai_result['wad']['drugs'] : 0);
+                        
+                        $offensive_score = isset($ai_result['offensive']['prob']) ? $ai_result['offensive']['prob'] : 0;
+                        $gore_score = isset($ai_result['gore']['prob']) ? $ai_result['gore']['prob'] : 0;
+                        $safe_score = isset($ai_result['nudity']['safe']) ? $ai_result['nudity']['safe'] : (isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1);
+
+                        if ($weapon_score > 0.4 || $alcohol_score > 0.4 || $drugs_score > 0.4 || $offensive_score > 0.4 || $gore_score > 0.4 || $safe_score < 0.5) {
+                            $is_safe = false;
+                            
+                            $w_pct = round($weapon_score * 100);
+                            $a_pct = round($alcohol_score * 100);
+                            $d_pct = round($drugs_score * 100);
+                            
+                            $error = "<strong>⚠️ UPLOAD BATCH REJECTED</strong><br><br>Image #$image_number triggered our security shield:<br>";
+                            if ($w_pct > 40) $error .= "🔫 <strong>Weapons:</strong> {$w_pct}% confidence<br>";
+                            if ($a_pct > 40) $error .= "🍺 <strong>Alcohol:</strong> {$a_pct}% confidence<br>";
+                            if ($d_pct > 40) $error .= "💊 <strong>Drugs:</strong> {$d_pct}% confidence<br>";
+                            if ($safe_score < 0.5) $error .= "🔞 <strong>Explicit Content detected.</strong><br>";
+                            break; // Kill loop
+                        }
+                    } else {
+                        $error = "SIGHTENGINE ERROR on Image #$image_number. Upload aborted.";
+                        $is_safe = false;
+                        break;
+                    }
+
+                    // ==========================================
+                    // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
+                    // ==========================================
+                    if ($is_safe) {
+                        $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
+                        $image_base64 = base64_encode(file_get_contents($tmp_name));
+                        
+                        $ch_cloud = curl_init();
+                        curl_setopt($ch_cloud, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
+                        curl_setopt($ch_cloud, CURLOPT_POST, 1);
+                        curl_setopt($ch_cloud, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
+                        curl_setopt($ch_cloud, CURLOPT_RETURNTRANSFER, true);
+                        curl_setopt($ch_cloud, CURLOPT_SSL_VERIFYPEER, false);
+                        
+                        $cloud_response = curl_exec($ch_cloud);
+                        curl_close($ch_cloud);
+                        $cloud_result = json_decode($cloud_response, true);
+                        
+                        if (isset($cloud_result['data']['url'])) {
+                            $uploaded_urls[] = $cloud_result['data']['url']; 
+                        } else {
+                            $error = "Cloud upload failed on Image #$image_number.";
+                            $is_safe = false;
+                            break;
+                        }
+                    }
+                }
             }
         }
+    } else {
+        $error = "Please upload at least one image.";
+        $is_safe = false;
     }
 
     // ==========================================
-    // 💾 CHECKPOINT 3: DATABASE SAVE (UPDATED)
+    // 💾 CHECKPOINT 3: DATABASE SAVE (JSON ARRAY)
     // ==========================================
-    if (empty($error)) {
-        if ($title && $price > 0 && $description && $category && $item_type && $image_path) {
+    if (empty($error) && $is_safe && count($uploaded_urls) > 0) {
+        if ($title && $price > 0 && $description && $category && $item_type) {
             try {
-                // Insert statement upgraded to include item_type
+                // Compress the array of URLs into a JSON string
+                $json_image_path = json_encode($uploaded_urls);
+
                 $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, item_type, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :type, :desc, :price, :img, 'active', NOW())");
                 $stmt->execute([
                     ':seller' => $seller_id,
@@ -140,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ':type' => $item_type,
                     ':desc' => $description,
                     ':price' => $price,
-                    ':img' => $image_path
+                    ':img' => $json_image_path
                 ]);
                 header("Location: index.php");
                 exit();
@@ -148,7 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Database Error: " . htmlspecialchars($e->getMessage());
             }
         } else {
-            $error = "Please fill in all required fields and ensure the image uploads.";
+            $error = "Please fill in all required fields.";
         }
     }
 }
@@ -170,13 +191,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         input[type="text"], input[type="number"], select, textarea { flex-grow: 1; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; font-family: inherit;}
         select option { background: #111; color: #fff; }
         textarea { resize: vertical; min-height: 100px; }
-        .file-upload-wrapper { position: relative; width: 100%; text-align: center; background: rgba(45,212,191,0.05); border: 2px dashed rgba(45,212,191,0.3); border-radius: 16px; padding: 30px 20px; cursor: pointer; box-sizing: border-box;}
+        
+        .file-upload-wrapper { position: relative; width: 100%; text-align: center; background: rgba(45,212,191,0.05); border: 2px dashed rgba(45,212,191,0.3); border-radius: 16px; padding: 30px 20px; cursor: pointer; box-sizing: border-box; transition: 0.3s;}
+        .file-upload-wrapper:hover { background: rgba(45,212,191,0.1); border-color: #2DD4BF; }
         .file-upload-wrapper input[type="file"] { position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
+        
         .btn-submit { width: 100%; padding: 16px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px; transition: 0.2s;}
         .btn-submit:hover { background: #fff; }
         .btn-cancel { display: block; text-align: center; margin-top: 15px; color: #888; text-decoration: none; }
         
-        #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; color: #2DD4BF; font-weight: bold; font-size: 1.2rem;}
+        #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; color: #2DD4BF; font-weight: bold; font-size: 1.2rem; text-align: center;}
         .spinner { border: 4px solid rgba(45,212,191,0.2); border-top: 4px solid #2DD4BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px;}
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
@@ -187,7 +211,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div id="loader">
     <div class="spinner"></div>
-    AI Security Scan Active...
+    Processing Batch Upload...<br>
+    <span style="font-size: 0.9rem; color: #888; margin-top: 10px; font-weight: normal;">AI Security Scan & Cloud Sync active. Please wait.</span>
 </div>
 
 <div class="upload-box">
@@ -199,8 +224,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="input-group">
             <div class="file-upload-wrapper">
                 <div style="font-size: 2.5rem; color: #2DD4BF;">📸</div>
-                <div id="fileNameDisplay" style="color:#888;">Click to upload item photo</div>
-                <input type="file" name="image" id="imageInput" accept="image/*" required>
+                <div id="fileNameDisplay" style="color:#fff; font-weight: bold; margin-top: 10px;">Select up to 15 photos</div>
+                <div style="color:#888; font-size: 0.85rem; margin-top: 5px;">Click to browse</div>
+                <input type="file" name="images[]" id="imageInput" accept="image/*" multiple required>
             </div>
         </div>
 
@@ -257,8 +283,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <script>
     document.getElementById('imageInput').addEventListener('change', function(e) {
-        document.getElementById('fileNameDisplay').textContent = e.target.files[0] ? e.target.files[0].name : "Click to upload item photo";
-        document.getElementById('fileNameDisplay').style.color = "#2DD4BF";
+        const fileCount = e.target.files.length;
+        const display = document.getElementById('fileNameDisplay');
+        
+        if (fileCount > 15) {
+            alert("You can only upload a maximum of 15 images.");
+            e.target.value = ''; // Reset the input
+            display.textContent = "Select up to 15 photos";
+            display.style.color = "#fff";
+        } else if (fileCount > 0) {
+            display.textContent = fileCount + (fileCount === 1 ? " photo selected" : " photos selected");
+            display.style.color = "#2DD4BF";
+        } else {
+            display.textContent = "Select up to 15 photos";
+            display.style.color = "#fff";
+        }
     });
 </script>
 </body>

@@ -1,15 +1,13 @@
 <?php
-// MILELE - Premium Global Feed (With Search & Filters)
+// MILELE - Premium Global Feed (JSON Array Supported)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
 
-// Capture search and category parameters
 $search = filter_input(INPUT_GET, 'search', FILTER_SANITIZE_SPECIAL_CHARS);
 $category = filter_input(INPUT_GET, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
 
 try {
-    // Dynamic Query Builder
     $sql = "SELECT l.*, u.university_name FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
     $params = [];
 
@@ -42,7 +40,6 @@ try {
     <style>
         body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
         
-        /* Navigation */
         .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
         .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
         .nav-actions { display: flex; gap: 15px; }
@@ -51,7 +48,6 @@ try {
         .btn-accent { background: #2DD4BF; color: #000; border: none; }
         .btn-accent:hover { background: #fff; }
 
-        /* Hero & Search Engine */
         .hero { padding: 80px 20px 60px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
         .hero h1 { font-size: 3.5rem; margin: 0 0 15px 0; line-height: 1.1; }
         .hero p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
@@ -62,12 +58,10 @@ try {
         .search-btn { padding: 0 30px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s;}
         .search-btn:hover { background: #fff; transform: translateY(-2px);}
 
-        /* Category Pills */
         .categories { display: flex; justify-content: center; gap: 10px; padding: 0 20px 40px; flex-wrap: wrap; }
         .cat-pill { padding: 10px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: #888; text-decoration: none; border-radius: 30px; font-size: 0.9rem; transition: 0.2s; white-space: nowrap;}
         .cat-pill:hover, .cat-pill.active { background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.3); }
 
-        /* The Premium Grid */
         .container { max-width: 1200px; margin: 0 auto; padding: 0 20px 80px; flex-grow: 1; width: 100%; box-sizing: border-box;}
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
         
@@ -77,7 +71,8 @@ try {
         .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #111; border-bottom: 1px solid rgba(255,255,255,0.05);}
         
         .card-body { padding: 20px; display: flex; flex-direction: column; flex-grow: 1; }
-        .card-cat { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .card-cat { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;}
+        .format-badge { background: rgba(255,255,255,0.1); padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; color: #ccc;}
         .card-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin: 0 0 10px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
         .card-price { font-size: 1.3rem; color: #2DD4BF; font-weight: bold; margin-bottom: 15px;}
         
@@ -86,7 +81,6 @@ try {
         .btn-view { padding: 6px 12px; background: rgba(255,255,255,0.05); color: #fff; border-radius: 8px; font-size: 0.85rem; font-weight: bold;}
         .card:hover .btn-view { background: #2DD4BF; color: #000; }
 
-        /* Empty State */
         .empty-state { text-align: center; padding: 80px 20px; color: #666; }
         .empty-state h2 { color: #fff; margin-bottom: 10px;}
 
@@ -129,7 +123,6 @@ try {
     <?php 
     $cats = ['Electronics', 'Textbooks', 'Fashion', 'Dorm Essentials', 'Services', 'Other'];
     foreach ($cats as $cat): 
-        // Build dynamic link preserving search query
         $link = "?category=" . urlencode($cat);
         if ($search) $link .= "&search=" . urlencode($search);
     ?>
@@ -148,13 +141,27 @@ try {
         </div>
     <?php else: ?>
         <div class="grid">
-            <?php foreach ($items as $item): ?>
+            <?php foreach ($items as $item): 
+                
+                // --- JSON ARRAY DECODER ---
+                // Silently unpacks the multi-image array and grabs the first image
+                $decoded_images = json_decode($item['image_path'], true);
+                if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_images) && count($decoded_images) > 0) {
+                    $thumbnail = $decoded_images[0];
+                } else {
+                    $thumbnail = !empty($item['image_path']) ? $item['image_path'] : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE';
+                }
+            ?>
                 <a href="item.php?id=<?php echo $item['listing_id']; ?>" class="card">
-                    <?php $img = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE'; ?>
-                    <img src="<?php echo $img; ?>" loading="lazy" class="card-img" alt="Item">
+                    <img src="<?php echo htmlspecialchars($thumbnail); ?>" loading="lazy" class="card-img" alt="Item">
                     
                     <div class="card-body">
-                        <div class="card-cat"><?php echo htmlspecialchars($item['category']); ?></div>
+                        <div class="card-cat">
+                            <?php echo htmlspecialchars($item['category']); ?>
+                            <?php if(isset($item['item_type'])): ?>
+                                <span class="format-badge"><?php echo $item['item_type'] == 'Digital' ? '📄 Digital' : '📦 Physical'; ?></span>
+                            <?php endif; ?>
+                        </div>
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
                         <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
                         

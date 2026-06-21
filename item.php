@@ -1,5 +1,5 @@
 <?php
-// MILELE - Detailed Item Page (Cloud Image Supported & Messaging Wired)
+// MILELE - Detailed Item Page (Photo Gallery & JSON Array Supported)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -26,6 +26,18 @@ try {
         die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>This item is no longer available.</div>");
     }
 
+    // --- JSON IMAGE EXTRACTOR ---
+    $images = [];
+    $decoded_images = json_decode($item['image_path'], true);
+    
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_images) && count($decoded_images) > 0) {
+        $images = $decoded_images;
+    } elseif (!empty($item['image_path'])) {
+        $images[] = $item['image_path']; // Fallback for older single-image posts
+    } else {
+        $images[] = 'https://via.placeholder.com/800x800/111111/333333?text=MILELE';
+    }
+
 } catch (PDOException $e) {
     die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif;'>System error loading item.</div>");
 }
@@ -50,11 +62,25 @@ try {
             .product-grid { grid-template-columns: 1fr; padding: 20px; }
         }
 
-        /* Large Premium Image Display */
-        .product-image { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 24px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+        /* Photo Gallery Styling */
+        .gallery-container { display: flex; flex-direction: column; gap: 15px; }
+        .main-image-wrapper { width: 100%; aspect-ratio: 1/1; border-radius: 24px; overflow: hidden; background: #111; border: 1px solid rgba(255,255,255,0.1); position: relative;}
+        .product-image { width: 100%; height: 100%; object-fit: cover; transition: opacity 0.3s; }
+        
+        .thumbnail-row { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+        .thumbnail-row::-webkit-scrollbar { height: 6px; }
+        .thumbnail-row::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        
+        .thumb-img { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; cursor: pointer; border: 2px solid transparent; opacity: 0.6; transition: 0.2s; background: #111; flex-shrink: 0;}
+        .thumb-img:hover { opacity: 1; }
+        .thumb-img.active { border-color: #2DD4BF; opacity: 1; }
 
         .product-info { display: flex; flex-direction: column; }
-        .category-badge { color: #2DD4BF; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; font-weight: bold; }
+        .meta-badges { display: flex; gap: 10px; margin-bottom: 10px; }
+        .badge { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; padding: 4px 10px; border-radius: 8px; }
+        .cat-badge { color: #2DD4BF; background: rgba(45,212,191,0.1); border: 1px solid rgba(45,212,191,0.2); }
+        .format-badge { color: #ccc; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.1); }
+
         .title { font-size: 2.5rem; margin: 0 0 15px 0; color: #fff; line-height: 1.2; }
         .price { font-size: 2rem; color: #2DD4BF; font-weight: bold; margin-bottom: 30px; }
         
@@ -80,13 +106,31 @@ try {
     </div>
 
     <div class="product-grid">
-        <div>
-            <?php $image_src = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/800x800/111111/333333?text=MILELE'; ?>
-            <img src="<?php echo $image_src; ?>" onerror="this.onerror=null; this.src='https://via.placeholder.com/800x800/111111/333333?text=No+Photo';" class="product-image" alt="Item Image">
+        
+        <div class="gallery-container">
+            <div class="main-image-wrapper">
+                <img src="<?php echo htmlspecialchars($images[0]); ?>" id="mainDisplayImage" class="product-image" alt="Item Image">
+            </div>
+            
+            <?php if (count($images) > 1): ?>
+                <div class="thumbnail-row">
+                    <?php foreach ($images as $index => $img): ?>
+                        <img src="<?php echo htmlspecialchars($img); ?>" 
+                             class="thumb-img <?php echo $index === 0 ? 'active' : ''; ?>" 
+                             onclick="switchImage(this, '<?php echo htmlspecialchars($img); ?>')">
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
         </div>
 
         <div class="product-info">
-            <div class="category-badge"><?php echo htmlspecialchars($item['category'] ?? 'Campus Goods'); ?></div>
+            <div class="meta-badges">
+                <div class="badge cat-badge"><?php echo htmlspecialchars($item['category'] ?? 'Campus Goods'); ?></div>
+                <?php if (isset($item['item_type'])): ?>
+                    <div class="badge format-badge"><?php echo $item['item_type'] == 'Digital' ? '📄 Digital File' : '📦 Physical Handover'; ?></div>
+                <?php endif; ?>
+            </div>
+
             <h1 class="title"><?php echo htmlspecialchars($item['title']); ?></h1>
             <div class="price">KES <?php echo number_format($item['price'], 2); ?></div>
 
@@ -114,5 +158,22 @@ try {
 </div>
 
 <?php include 'footer.php'; ?>
+
+<script>
+    function switchImage(thumbnailElement, newSrc) {
+        // Change the main large image
+        document.getElementById('mainDisplayImage').src = newSrc;
+        
+        // Remove the 'active' glowing border from all thumbnails
+        let thumbs = document.getElementsByClassName('thumb-img');
+        for (let i = 0; i < thumbs.length; i++) {
+            thumbs[i].classList.remove('active');
+        }
+        
+        // Add the 'active' border to the clicked thumbnail
+        thumbnailElement.classList.add('active');
+    }
+</script>
+
 </body>
 </html>
