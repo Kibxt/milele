@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Global Feed (Inline Swiping & Glassmorphic UI)
+// MILELE - Premium Global Feed (With Live Notification Engine)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -7,6 +7,22 @@ require 'db.php';
 $search = filter_input(INPUT_GET, 'search', FILTER_SANITIZE_SPECIAL_CHARS);
 $category = filter_input(INPUT_GET, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
 
+// ==========================================
+// 🔔 UNREAD MESSAGE TRACKER
+// ==========================================
+$unread_count = 0;
+if (isset($_SESSION['user_id'])) {
+    try {
+        // We safely check the messages table. If it doesn't exist yet, it fails silently and ignores the count.
+        $stmt_msg = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE receiver_id = :uid AND is_read = 0");
+        $stmt_msg->execute([':uid' => $_SESSION['user_id']]);
+        $unread_count = $stmt_msg->fetchColumn();
+    } catch (PDOException $e) {
+        $unread_count = 0; 
+    }
+}
+
+// Load Feed Items
 try {
     $sql = "SELECT l.*, u.university_name FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
     $params = [];
@@ -43,11 +59,24 @@ try {
         /* Navigation */
         .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
         .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
-        .nav-actions { display: flex; gap: 15px; }
-        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold;}
+        .nav-actions { display: flex; gap: 15px; align-items: center;}
+        
+        .btn-glass { position: relative; padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold;}
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
         .btn-accent { background: #2DD4BF; color: #000; border: none; }
         .btn-accent:hover { background: #fff; }
+
+        /* Notification Badge */
+        .notif-badge { position: absolute; top: -6px; right: -6px; background: #EF4444; color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 10px; border: 2px solid #050505; animation: pulse 2s infinite; pointer-events: none;}
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        /* Slide-up Toast Alert */
+        .toast-alert { position: fixed; bottom: -100px; right: 20px; background: rgba(20,20,20,0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); padding: 15px 20px; border-radius: 16px; display: flex; align-items: center; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; min-width: 250px;}
+        .toast-alert.show { bottom: 20px; }
 
         /* Hero */
         .hero { padding: 80px 20px 60px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
@@ -73,22 +102,17 @@ try {
         .card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; overflow: hidden; transition: transform 0.3s, box-shadow 0.3s; display: flex; flex-direction: column; text-decoration: none; position: relative;}
         .card:hover { transform: translateY(-5px); border-color: rgba(45,212,191,0.3); box-shadow: 0 20px 40px rgba(0,0,0,0.4);}
         
-        /* Floating Badges */
         .floating-badges { position: absolute; top: 15px; left: 15px; right: 15px; display: flex; justify-content: space-between; z-index: 10; pointer-events: none;}
         .glass-badge { background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; color: #fff; text-transform: uppercase; letter-spacing: 1px;}
         .badge-cat { color: #2DD4BF; border-color: rgba(45,212,191,0.3); }
 
-        /* Inline Swipeable Gallery */
         .gallery-track { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -ms-overflow-style: none; width: 100%; aspect-ratio: 1/1; background: radial-gradient(circle, #1a1a1a 0%, #050505 100%); border-bottom: 1px solid rgba(255,255,255,0.05);}
-        .gallery-track::-webkit-scrollbar { display: none; } /* Hides scrollbar completely */
-        
+        .gallery-track::-webkit-scrollbar { display: none; } 
         .gallery-img { flex: 0 0 100%; width: 100%; height: 100%; object-fit: contain; scroll-snap-align: center; pointer-events: none;}
         
-        /* Swipe Hint Indicator */
         .swipe-hint { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); padding: 4px 10px; border-radius: 12px; font-size: 0.7rem; color: #aaa; pointer-events: none; opacity: 0; transition: 0.3s;}
         .card:hover .swipe-hint { opacity: 1; }
 
-        /* Card Details */
         .card-body { padding: 25px 20px 20px; display: flex; flex-direction: column; flex-grow: 1; }
         .card-title { font-size: 1.15rem; font-weight: bold; color: #fff; margin: 0 0 10px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;}
         .card-price { font-size: 1.4rem; color: #2DD4BF; font-weight: bold; margin-bottom: 15px;}
@@ -106,7 +130,12 @@ try {
             .hero h1 { font-size: 2.5rem; }
             .search-form { flex-direction: column; }
             .search-btn { padding: 18px; }
-            .swipe-hint { opacity: 1; } /* Always show hint on mobile */
+            .swipe-hint { opacity: 1; } 
+            
+            /* Responsive nav tweaks */
+            .nav-actions { gap: 10px; }
+            .btn-glass { padding: 8px 12px; font-size: 0.85rem; }
+            .brand { font-size: 1.4rem; }
         }
     </style>
 </head>
@@ -117,12 +146,35 @@ try {
     <div class="nav-actions">
         <a href="post_item.php" class="btn-glass btn-accent">+ Sell</a>
         <?php if(isset($_SESSION['user_id'])): ?>
+            <a href="inbox.php" class="btn-glass">
+                Inbox
+                <?php if($unread_count > 0): ?>
+                    <span class="notif-badge"><?php echo $unread_count; ?></span>
+                <?php endif; ?>
+            </a>
             <a href="profile.php" class="btn-glass">Profile</a>
         <?php else: ?>
             <a href="login.php" class="btn-glass">Login</a>
         <?php endif; ?>
     </div>
 </nav>
+
+<?php if($unread_count > 0): ?>
+    <div class="toast-alert" id="msgToast">
+        <div style="font-size: 1.8rem; line-height: 1;">💬</div>
+        <div style="flex-grow: 1;">
+            <div style="font-weight: bold; color: #fff; font-size: 0.95rem;">New Messages</div>
+            <div style="color: #aaa; font-size: 0.8rem;">You have <?php echo $unread_count; ?> unread message(s).</div>
+        </div>
+        <a href="inbox.php" style="color: #2DD4BF; font-weight: bold; text-decoration: none; font-size: 0.9rem; padding: 5px;">View</a>
+    </div>
+    
+    <script>
+        // Slides the toast in after 1 second, and hides it after 6 seconds
+        setTimeout(() => { document.getElementById('msgToast').classList.add('show'); }, 1000);
+        setTimeout(() => { document.getElementById('msgToast').classList.remove('show'); }, 6000);
+    </script>
+<?php endif; ?>
 
 <header class="hero">
     <h1>The Campus Market.</h1>
@@ -160,8 +212,6 @@ try {
     <?php else: ?>
         <div class="grid">
             <?php foreach ($items as $item): 
-                
-                // Parse the JSON array of images
                 $images = [];
                 $decoded_images = json_decode($item['image_path'], true);
                 if (json_last_error() === JSON_ERROR_NONE && is_array($decoded_images) && count($decoded_images) > 0) {
@@ -171,7 +221,6 @@ try {
                 }
             ?>
                 <a href="item.php?id=<?php echo $item['listing_id']; ?>" class="card">
-                    
                     <div class="floating-badges">
                         <span class="glass-badge badge-cat"><?php echo htmlspecialchars($item['category']); ?></span>
                         <?php if(isset($item['item_type'])): ?>
