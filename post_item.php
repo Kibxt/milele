@@ -33,11 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
         
-        // Forcing exact Mime-Type and Filename for AI recognition
+        // Forcing exact Mime-Type and Filename for strict AI recognition
         $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
         
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,weapons', 
+            'models' => 'nudity-2.0,weapon', // Syntax requirement patched
             'api_user' => $sightengine_user,
             'api_secret' => $sightengine_secret,
             'media' => $cfile
@@ -53,24 +53,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $is_safe = true;
         
         if ($ai_response_raw === false) {
-            $error = "SERVER CATCH: cURL Error - " . htmlspecialchars($curl_err);
+            $error = "Security scan failed: Server timeout. Please try again.";
             $is_safe = false;
         } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
             if ($ai_result['weapon'] > 0.5 || $ai_result['nudity']['safe'] < 0.5) {
                 $is_safe = false;
-                $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image.";
             }
         } else {
-            $api_error_msg = isset($ai_result['error']['message']) ? $ai_result['error']['message'] : "Unknown API Error";
-            $error = "SIGHTENGINE ERROR: " . htmlspecialchars($api_error_msg);
+            $error = "Security scan failed. Please try again.";
             $is_safe = false;
         }
 
+        if (!$is_safe && empty($error)) {
+            $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image. Repeated attempts will result in an immediate account suspension.";
+        } 
         // ==========================================
         // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
         // ==========================================
-        if ($is_safe) {
-            // ImgBB Live Key Inserted
+        else if ($is_safe) {
             $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
             
             $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
