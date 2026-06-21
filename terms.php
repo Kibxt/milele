@@ -23,7 +23,7 @@
         
         strong { color: #fff; }
         ul { padding-left: 20px; margin-top: 10px; }
-        li { margin-bottom: 10px; }
+        li { margin-bottom: 15px; }
 
         .faq-grid { display: flex; flex-direction: column; gap: 15px; margin-top: 20px; }
         .faq-item { background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 12px; }
@@ -69,13 +69,15 @@
         <strong>The Golden Rule:</strong> Never hand over your 4-digit PIN until you have physically inspected the item and are satisfied with your purchase. The moment you provide the PIN to the seller, the sale is final.
     </div>
 
-    <h2>3. Prohibited Items</h2>
-    <p>To keep the campus community safe, the following items are strictly banned from the MILELE marketplace. Any attempt to list these will result in an immediate and permanent account ban:</p>
+    <h2>3. Prohibited Items (AI Moderated)</h2>
+    <p>To keep the campus community safe, every image uploaded to MILELE is scanned in real-time by an Enterprise AI Computer Vision network. The following items are strictly banned. Attempting to list them will trigger our security shield, reject your upload, and potentially result in an immediate account ban:</p>
     <ul>
-        <li>Weapons of any kind (including pocket knives and self-defense tools).</li>
-        <li>Illegal drugs, narcotics, alcohol, or prescription medications.</li>
-        <li>Academic cheating materials (e.g., stolen exam papers, paid assignment services).</li>
-        <li>Counterfeit currency, stolen goods, or hacked electronic devices.</li>
+        <li><strong>Weapons & Firearms:</strong> Guns, explosives, combat knives, ammunition, and weapon accessories.</li>
+        <li><strong>Alcohol & Drugs:</strong> Alcoholic beverages, recreational drugs, drug paraphernalia, and unverified prescription medications.</li>
+        <li><strong>Explicit Content:</strong> Nudity, partial nudity, suggestive imagery, or adult materials.</li>
+        <li><strong>Graphic & Offensive Material:</strong> Imagery containing excessive gore, violence, or recognized hate symbols.</li>
+        <li><strong>Off-Platform Scams:</strong> Uploading photos with phone numbers, email addresses, or social media handles written on them in an attempt to bypass the escrow system.</li>
+        <li><strong>Academic Fraud:</strong> Stolen exam papers, paid assignment services, or cheating materials.</li>
     </ul>
 
     <h2 id="disputes">4. Dispute Resolution & Emergency Freeze</h2>

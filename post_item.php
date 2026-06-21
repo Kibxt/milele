@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (AI Moderation & Cloud Storage Active)
+// MILELE - Premium Item Upload Terminal (Full Spectrum AI & Cloud Storage)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         
         // ==========================================
-        // 🚨 CHECKPOINT 1: SIGHTENGINE AI MODERATION
+        // 🚨 CHECKPOINT 1: SIGHTENGINE FULL SPECTRUM AI
         // ==========================================
         $sightengine_user = '1287637059';     
         $sightengine_secret = 'vVLakzVx9WAHwqvg9o8p9ucggiu5byzJ'; 
@@ -35,9 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
         
-        // PATCH: Requesting the correct 'wad' (Weapons, Alcohol, Drugs) model
+        // FULL SPECTRUM: Firing 4 simultaneous AI models across the image
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
-            'models' => 'nudity-2.0,wad', 
+            'models' => 'nudity-2.0,wad,offensive,gore', 
             'api_user' => $sightengine_user,
             'api_secret' => $sightengine_secret,
             'media' => $cfile
@@ -48,38 +48,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         curl_close($ch_ai);
         
         $ai_result = json_decode($ai_response_raw, true);
-
         $is_safe = true;
         
         if ($ai_response_raw === false) {
-            $error = "Security scan failed: Server timeout. Please try again.";
+            $error = "API Connection Failed: " . htmlspecialchars($curl_err);
             $is_safe = false;
         } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
             
-            // PATCH: Correctly extracting the new API response keys
-            $weapon_score = isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0;
+            // DEEP EXTRACTION: Hunting down every parameter Sightengine offers for these models
+            $weapon_score = isset($ai_result['weapon']) ? $ai_result['weapon'] : (isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0);
+            $alcohol_score = isset($ai_result['alcohol']) ? $ai_result['alcohol'] : (isset($ai_result['wad']['alcohol']) ? $ai_result['wad']['alcohol'] : 0);
+            $drugs_score = isset($ai_result['drugs']) ? $ai_result['drugs'] : (isset($ai_result['wad']['drugs']) ? $ai_result['wad']['drugs'] : 0);
             
-            // In nudity-2.0, 'none' means the image has no nudity. 
-            // We default to 1 (safe) if the API glitches, to prevent false bans.
-            $nudity_none_score = isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1;
+            // Offensive and Gore models return their probabilities uniquely
+            $offensive_score = isset($ai_result['offensive']['prob']) ? $ai_result['offensive']['prob'] : 0;
+            $gore_score = isset($ai_result['gore']['prob']) ? $ai_result['gore']['prob'] : 0;
 
-            // If weapon probability is high OR the probability of "no nudity" is low, flag it
-            if ($weapon_score > 0.5 || $nudity_none_score < 0.5) {
+            // Nudity 2.0 Check (safe score or none score)
+            $safe_score = isset($ai_result['nudity']['safe']) ? $ai_result['nudity']['safe'] : (isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1);
+
+            // TRIGGER THRESHOLD: If any prohibited item scores over 40% (0.4), freeze the upload.
+            if ($weapon_score > 0.4 || $alcohol_score > 0.4 || $drugs_score > 0.4 || $offensive_score > 0.4 || $gore_score > 0.4 || $safe_score < 0.5) {
                 $is_safe = false;
+                
+                // Convert to clean percentages
+                $w_pct = round($weapon_score * 100);
+                $a_pct = round($alcohol_score * 100);
+                $d_pct = round($drugs_score * 100);
+                $o_pct = round($offensive_score * 100);
+                $g_pct = round($gore_score * 100);
+                $explicit_pct = 100 - round($safe_score * 100);
+                
+                // Construct a dynamic, surgical Violation Receipt
+                $error = "<strong>⚠️ UPLOAD REJECTED: Security Shield Triggered.</strong><br><br>The AI detected content violating our campus marketplace rules:<br><br>";
+                
+                if ($w_pct > 40) $error .= "🔫 <strong>Weapons & Firearms:</strong> {$w_pct}% confidence<br>";
+                if ($a_pct > 40) $error .= "🍺 <strong>Alcoholic Beverages:</strong> {$a_pct}% confidence<br>";
+                if ($d_pct > 40) $error .= "💊 <strong>Drugs & Narcotics:</strong> {$d_pct}% confidence<br>";
+                if ($o_pct > 40) $error .= "🛑 <strong>Hate/Offensive Material:</strong> {$o_pct}% confidence<br>";
+                if ($g_pct > 40) $error .= "🩸 <strong>Graphic/Gore:</strong> {$g_pct}% confidence<br>";
+                if ($safe_score < 0.5) $error .= "🔞 <strong>Explicit/Adult Content:</strong> {$explicit_pct}% confidence<br>";
+                
+                $error .= "<br><span style='font-size:0.85rem; color:#aaa;'>If you believe this is a mistake, please adjust the image framing or lighting. Repeated violations will result in an automated ban.</span>";
             }
-            
         } else {
-            $error = "Security scan failed. Please try again.";
+            $api_error_msg = isset($ai_result['error']['message']) ? $ai_result['error']['message'] : json_encode($ai_result);
+            $error = "<strong>SIGHTENGINE ERROR:</strong> " . htmlspecialchars($api_error_msg);
             $is_safe = false;
         }
 
-        if (!$is_safe && empty($error)) {
-            $error = "⚠️ UPLOAD REJECTED: Our automated AI security system detected prohibited content in this image. Repeated attempts will result in an immediate account suspension.";
-        } 
         // ==========================================
         // ☁️ CHECKPOINT 2: IMGBB CLOUD TELEPORTER
         // ==========================================
-        else if ($is_safe) {
+        if ($is_safe) {
             $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
             
             $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
@@ -169,7 +190,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 <div class="upload-box">
     <h1>Post an Item</h1>
-    <?php if ($error) echo "<div style='color:#F87171; text-align:left; margin-bottom:15px; background: rgba(248,113,113,0.1); padding: 15px; border-radius: 12px; border: 1px solid rgba(248,113,113,0.3); font-size: 0.95rem; line-height: 1.5;'>$error</div>"; ?>
+    
+    <?php if ($error) echo "<div style='color:#F87171; text-align:left; margin-bottom:15px; background: rgba(248,113,113,0.1); padding: 20px; border-radius: 12px; border: 1px solid rgba(248,113,113,0.3); font-size: 0.95rem; line-height: 1.5;'>$error</div>"; ?>
 
     <form action="post_item.php" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('loader').style.display = 'flex';">
         <div class="input-group">
@@ -214,7 +236,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </form>
     
     <div class="ai-shield">
-        🛡️ Guided by Real-Time AI Vision Security
+        🛡️ Guided by Full-Spectrum AI Vision Security
     </div>
     
     <a href="index.php" class="btn-cancel">Cancel</a>
