@@ -36,6 +36,6 @@
         </div>
     </div>
     <div class="footer-bottom">
-        &copy; <?php echo date('Y'); ?> MILELE Campus Market. All rights reserved. Engineered by <span class="kx-badge">KXBET FX</span>.
+        &copy; <?php echo date('Y'); ?> MILELE Campus Market. All rights reserved. Engineered by <span class="kx-badge">KXBET</span>.
     </div>
 </footer>
