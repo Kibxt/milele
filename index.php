@@ -1,22 +1,36 @@
 <?php
-// MILELE - Global Marketplace Feed
+// MILELE - Premium Global Feed (With Search & Filters)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
 
-$user_id = $_SESSION['user_id'] ?? null;
+// Capture search and category parameters
+$search = filter_input(INPUT_GET, 'search', FILTER_SANITIZE_SPECIAL_CHARS);
+$category = filter_input(INPUT_GET, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
 
 try {
-    // Fetch active items and check if the current user has favorited them
-    $sql = "SELECT l.*, u.full_name as seller_name";
-    if ($user_id) { $sql .= ", (SELECT COUNT(*) FROM favorites f WHERE f.listing_id = l.listing_id AND f.user_id = :uid) as is_favorited"; }
-    $sql .= " FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active' ORDER BY l.created_at DESC";
+    // Dynamic Query Builder
+    $sql = "SELECT l.*, u.university_name FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
+    $params = [];
+
+    if (!empty($search)) {
+        $sql .= " AND (l.title LIKE :search OR l.description LIKE :search)";
+        $params[':search'] = '%' . $search . '%';
+    }
+
+    if (!empty($category)) {
+        $sql .= " AND l.category = :category";
+        $params[':category'] = $category;
+    }
+
+    $sql .= " ORDER BY l.created_at DESC";
     
     $stmt = $pdo->prepare($sql);
-    if ($user_id) { $stmt->execute([':uid' => $user_id]); } else { $stmt->execute(); }
+    $stmt->execute($params);
     $items = $stmt->fetchAll();
+
 } catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading market.</div>");
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System Error Loading Feed.</div>");
 }
 ?>
 <!DOCTYPE html>
@@ -24,88 +38,136 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Marketplace | MILELE</title>
+    <title>MILELE | Campus Marketplace</title>
     <style>
-        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 50px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; flex-wrap: wrap; gap: 20px;}
-        .nav-bar h1 { color: #2DD4BF; margin: 0; font-size: 2.5rem; letter-spacing: -1px; font-weight: 800;}
-        .nav-buttons { display: flex; gap: 10px; flex-wrap: wrap;}
-        .btn-glass { padding: 10px 18px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold;}
+        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
+        
+        /* Navigation */
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
+        .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
+        .nav-actions { display: flex; gap: 15px; }
+        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold;}
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
         .btn-accent { background: #2DD4BF; color: #000; border: none; }
-        
-        .header-section { text-align: center; margin-bottom: 60px; }
-        .header-section h2 { font-size: 2.5rem; margin: 0 0 15px 0; }
-        .header-section p { color: #888; font-size: 1.1rem; }
+        .btn-accent:hover { background: #fff; }
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 30px; }
-        .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 24px; transition: 0.3s; display: flex; flex-direction: column; position: relative;}
-        .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-5px); }
+        /* Hero & Search Engine */
+        .hero { padding: 80px 20px 60px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
+        .hero h1 { font-size: 3.5rem; margin: 0 0 15px 0; line-height: 1.1; }
+        .hero p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
         
-        .image-container { position: relative; width: 100%; margin-bottom: 20px; }
-        .item-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 16px; background: rgba(255,255,255,0.05); }
-        
-        .btn-heart { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.1); color: #fff; width: 40px; height: 40px; border-radius: 50%; display: flex; justify-content: center; align-items: center; text-decoration: none; font-size: 1.2rem; transition: 0.2s;}
-        .btn-heart:hover { transform: scale(1.1); }
-        .heart-active { color: #F87171; border-color: #F87171; }
+        .search-form { max-width: 600px; margin: 0 auto; display: flex; gap: 10px; }
+        .search-input { flex-grow: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 18px 24px; border-radius: 16px; color: #fff; font-size: 1.1rem; outline: none; transition: 0.3s;}
+        .search-input:focus { border-color: #2DD4BF; background: rgba(255,255,255,0.08);}
+        .search-btn { padding: 0 30px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s;}
+        .search-btn:hover { background: #fff; transform: translateY(-2px);}
 
-        .item-category { font-size: 0.75rem; color: #2DD4BF; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .item-title { font-weight: bold; margin-bottom: 8px; font-size: 1.25rem; color: #fff; }
-        .item-seller { font-size: 0.85rem; color: #666; margin-bottom: 15px; }
-        .item-price { color: #fff; font-size: 1.4rem; font-weight: bold; margin-bottom: 20px; }
-        .btn-buy { display: block; text-align: center; width: 100%; padding: 14px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 12px; text-decoration: none; font-weight: bold; transition: 0.2s; border: 1px solid rgba(45,212,191,0.2); margin-top: auto;}
-        .btn-buy:hover { background: #2DD4BF; color: #000; }
+        /* Category Pills */
+        .categories { display: flex; justify-content: center; gap: 10px; padding: 0 20px 40px; flex-wrap: wrap; }
+        .cat-pill { padding: 10px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: #888; text-decoration: none; border-radius: 30px; font-size: 0.9rem; transition: 0.2s; white-space: nowrap;}
+        .cat-pill:hover, .cat-pill.active { background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.3); }
+
+        /* The Premium Grid */
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px 80px; flex-grow: 1; width: 100%; box-sizing: border-box;}
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
+        
+        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; overflow: hidden; transition: 0.3s; display: flex; flex-direction: column; text-decoration: none;}
+        .card:hover { transform: translateY(-5px); border-color: rgba(45,212,191,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.5);}
+        
+        .card-img { width: 100%; aspect-ratio: 1/1; object-fit: cover; background: #111; border-bottom: 1px solid rgba(255,255,255,0.05);}
+        
+        .card-body { padding: 20px; display: flex; flex-direction: column; flex-grow: 1; }
+        .card-cat { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+        .card-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin: 0 0 10px 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;}
+        .card-price { font-size: 1.3rem; color: #2DD4BF; font-weight: bold; margin-bottom: 15px;}
+        
+        .card-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;}
+        .card-uni { font-size: 0.8rem; color: #666; display: flex; align-items: center; gap: 5px;}
+        .btn-view { padding: 6px 12px; background: rgba(255,255,255,0.05); color: #fff; border-radius: 8px; font-size: 0.85rem; font-weight: bold;}
+        .card:hover .btn-view { background: #2DD4BF; color: #000; }
+
+        /* Empty State */
+        .empty-state { text-align: center; padding: 80px 20px; color: #666; }
+        .empty-state h2 { color: #fff; margin-bottom: 10px;}
+
+        @media (max-width: 768px) {
+            .nav-bar { padding: 15px 20px; }
+            .hero h1 { font-size: 2.5rem; }
+            .search-form { flex-direction: column; }
+            .search-btn { padding: 18px; }
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="nav-bar">
-        <h1>MILELE</h1>
-        <div class="nav-buttons">
-            <?php if ($user_id): ?>
-                <a href="post_item.php" class="btn-glass">➕ Sell Item</a>
-                <a href="favourites.php" class="btn-glass">❤️ Favourites</a>
-                <a href="inbox.php" class="btn-glass">💬 Inbox</a>
-                <a href="profile.php" class="btn-glass btn-accent">My Profile</a>
-            <?php else: ?>
-                <a href="login.php" class="btn-glass">Log In</a>
-                <a href="register.php" class="btn-glass btn-accent">Sign Up</a>
-            <?php endif; ?>
-        </div>
+<nav class="nav-bar">
+    <a href="index.php" class="brand">MILELE</a>
+    <div class="nav-actions">
+        <a href="post_item.php" class="btn-glass btn-accent">+ Sell</a>
+        <?php if(isset($_SESSION['user_id'])): ?>
+            <a href="profile.php" class="btn-glass">Profile</a>
+        <?php else: ?>
+            <a href="login.php" class="btn-glass">Login</a>
+        <?php endif; ?>
     </div>
+</nav>
 
-    <div class="header-section">
-        <h2>The Campus Escrow Market</h2>
-        <p>Buy and sell safely. Funds are locked in the Safaricom cloud until handover.</p>
-    </div>
+<header class="hero">
+    <h1>The Campus Market.</h1>
+    <p>Zero Scams. Bulletproof Escrow. Exclusive to Students.</p>
+    
+    <form action="index.php" method="GET" class="search-form">
+        <?php if($category): ?><input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>"><?php endif; ?>
+        <input type="text" name="search" class="search-input" placeholder="Search for laptops, textbooks, shoes..." value="<?php echo htmlspecialchars($search); ?>">
+        <button type="submit" class="search-btn">Search</button>
+    </form>
+</header>
 
-    <div class="grid">
-        <?php foreach ($items as $item): ?>
-            <div class="item-card">
-                <div class="image-container">
-                    <?php $image_src = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE'; ?>
-                    <img src="<?php echo $image_src; ?>" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x400/111111/333333?text=No+Photo';">
-                    
-                    <?php if ($user_id): ?>
-                        <?php $is_fav = isset($item['is_favorited']) && $item['is_favorited'] > 0; ?>
-                        <a href="toggle_favorite.php?id=<?php echo $item['listing_id']; ?>" class="btn-heart <?php echo $is_fav ? 'heart-active' : ''; ?>">
-                            <?php echo $is_fav ? '❤️' : '🤍'; ?>
-                        </a>
-                    <?php endif; ?>
-                </div>
-                
-                <div class="item-category"><?php echo htmlspecialchars($item['category'] ?? 'Campus Goods'); ?></div>
-                <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
-                <div class="item-seller">Seller: <?php echo htmlspecialchars(explode(' ', $item['seller_name'])[0]); ?></div>
-                <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
-                
-                <a href="item.php?id=<?php echo $item['listing_id']; ?>" class="btn-buy">View Item</a>
-            </div>
-        <?php endforeach; ?>
-    </div>
+<div class="categories">
+    <a href="index.php<?php echo $search ? '?search='.urlencode($search) : ''; ?>" class="cat-pill <?php echo empty($category) ? 'active' : ''; ?>">All Items</a>
+    
+    <?php 
+    $cats = ['Electronics', 'Textbooks', 'Fashion', 'Dorm Essentials', 'Services', 'Other'];
+    foreach ($cats as $cat): 
+        // Build dynamic link preserving search query
+        $link = "?category=" . urlencode($cat);
+        if ($search) $link .= "&search=" . urlencode($search);
+    ?>
+        <a href="<?php echo $link; ?>" class="cat-pill <?php echo ($category === $cat) ? 'active' : ''; ?>">
+            <?php echo $cat; ?>
+        </a>
+    <?php endforeach; ?>
 </div>
+
+<main class="container">
+    <?php if (empty($items)): ?>
+        <div class="empty-state">
+            <h2>No items found</h2>
+            <p>We couldn't find any listings matching your current search or category.</p>
+            <a href="index.php" style="color: #2DD4BF; text-decoration: none; font-weight: bold; margin-top: 20px; display: inline-block;">Clear Filters</a>
+        </div>
+    <?php else: ?>
+        <div class="grid">
+            <?php foreach ($items as $item): ?>
+                <a href="item.php?id=<?php echo $item['listing_id']; ?>" class="card">
+                    <?php $img = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE'; ?>
+                    <img src="<?php echo $img; ?>" loading="lazy" class="card-img" alt="Item">
+                    
+                    <div class="card-body">
+                        <div class="card-cat"><?php echo htmlspecialchars($item['category']); ?></div>
+                        <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
+                        <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
+                        
+                        <div class="card-footer">
+                            <div class="card-uni">🎓 <?php echo htmlspecialchars(explode(' ', $item['university_name'])[0]); ?></div>
+                            <div class="btn-view">View</div>
+                        </div>
+                    </div>
+                </a>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</main>
 
 <?php include 'footer.php'; ?>
 
