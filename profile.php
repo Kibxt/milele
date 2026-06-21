@@ -1,5 +1,5 @@
 <?php
-// MILELE - Profile Dashboard (With Dispute Engine & Admin Gate)
+// MILELE - Profile Dashboard (With Cloud Images & Admin Gate)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -133,7 +133,9 @@ try {
         <div class="grid">
             <?php foreach ($my_listings as $item): ?>
                 <div class="item-card">
-                    <img src="https://via.placeholder.com/400x400/111111/333333?text=MILELE+Item" alt="Item">
+                    <?php $image_src = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE'; ?>
+                    <img src="<?php echo $image_src; ?>" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x400/111111/333333?text=No+Photo';">
+                    
                     <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
                     <div class="card-controls">
