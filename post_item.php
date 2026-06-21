@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (With 3-Strike System)
+// MILELE - Premium Item Upload Terminal (With GPS Location & 3-Strike System)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -16,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $price = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
     $category = filter_input(INPUT_POST, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
     $item_type = filter_input(INPUT_POST, 'item_type', FILTER_SANITIZE_SPECIAL_CHARS);
+    $location = filter_input(INPUT_POST, 'location', FILTER_SANITIZE_SPECIAL_CHARS); // NEW: GPS Location
     $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS);
     $seller_id = $_SESSION['user_id'];
     
@@ -23,9 +24,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 🛠️ SILENT DATABASE UPGRADES
     // ==========================================
     try { $pdo->exec("ALTER TABLE listings ADD COLUMN item_type VARCHAR(50) DEFAULT 'Physical'"); } catch (PDOException $e) {}
+    try { $pdo->exec("ALTER TABLE listings ADD COLUMN location VARCHAR(255) DEFAULT 'Campus'"); } catch (PDOException $e) {} // NEW: Location Column
     try { $pdo->exec("ALTER TABLE listings MODIFY image_path TEXT"); } catch (PDOException $e) {}
     try { $pdo->exec("ALTER TABLE users ADD COLUMN banned_until DATETIME DEFAULT NULL"); } catch (PDOException $e) {} 
-    try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {} // NEW: Strike Tracker
+    try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {} 
 
     $uploaded_urls = [];
     $is_safe = true;
@@ -97,7 +99,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $new_strikes = $current_strikes + 1;
 
                             if ($new_strikes >= 3) {
-                                // Strike 3: Ban them and kick them out
                                 $pdo->prepare("UPDATE users SET strike_count = :strikes, banned_until = DATE_ADD(NOW(), INTERVAL 30 DAY) WHERE user_id = :id")
                                     ->execute([':strikes' => $new_strikes, ':id' => $seller_id]);
                                 session_destroy();
@@ -106,7 +107,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 header("Location: login.php");
                                 exit();
                             } else {
-                                // Strike 1 & 2: Issue a warning but let them stay logged in
                                 $pdo->prepare("UPDATE users SET strike_count = :strikes WHERE user_id = :id")
                                     ->execute([':strikes' => $new_strikes, ':id' => $seller_id]);
                                 
@@ -166,19 +166,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 💾 CHECKPOINT 3: DATABASE SAVE 
+    // 💾 CHECKPOINT 3: DATABASE SAVE (WITH LOCATION)
     // ==========================================
     if (empty($error) && $is_safe && count($uploaded_urls) > 0) {
-        if ($title && $price > 0 && $description && $category && $item_type) {
+        if ($title && $price > 0 && $description && $category && $item_type && $location) {
             try {
                 $json_image_path = json_encode($uploaded_urls);
 
-                $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, item_type, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :type, :desc, :price, :img, 'active', NOW())");
+                $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, item_type, location, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :type, :location, :desc, :price, :img, 'active', NOW())");
                 $stmt->execute([
                     ':seller' => $seller_id,
                     ':title' => $title,
                     ':category' => $category,
                     ':type' => $item_type,
+                    ':location' => $location, // Injects GPS Location
                     ':desc' => $description,
                     ':price' => $price,
                     ':img' => $json_image_path
@@ -206,7 +207,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         h1 { margin: 0 0 10px 0; font-size: 2rem; text-align: center; color: #fff;}
         .input-group { margin-bottom: 20px; }
         .input-group label { display: block; font-size: 0.85rem; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .input-wrapper { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 12px 15px; display: flex; align-items: center;}
+        .input-wrapper { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 12px 15px; display: flex; align-items: center; position: relative;}
         .input-wrapper:focus-within { border-color: #2DD4BF; }
         input[type="text"], input[type="number"], select, textarea { flex-grow: 1; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; font-family: inherit;}
         select option { background: #111; color: #fff; }
@@ -225,6 +226,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         
         .ai-shield { text-align: center; margin-top: 20px; font-size: 0.8rem; color: #666; display: flex; align-items: center; justify-content: center; gap: 5px;}
+        
+        /* GPS Button Styling */
+        .gps-btn { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: rgba(45,212,191,0.1); border: 1px solid rgba(45,212,191,0.3); border-radius: 10px; padding: 6px 10px; cursor: pointer; font-size: 1.1rem; transition: 0.2s; display: flex; align-items: center; justify-content: center; color: #2DD4BF;}
+        .gps-btn:hover { background: #2DD4BF; color: #000; }
+        .geo-status { font-size: 0.75rem; color: #888; margin-top: 8px; text-align: right; }
     </style>
 </head>
 <body>
@@ -253,6 +259,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <div class="input-group">
             <label>Item Name</label>
             <div class="input-wrapper"><input type="text" name="title" required autocomplete="off"></div>
+        </div>
+
+        <div class="input-group">
+            <label>Location / Meetup Point</label>
+            <div class="input-wrapper">
+                <input type="text" name="location" id="locationInput" required placeholder="e.g. Strathmore Student Center" autocomplete="off" style="padding-right: 40px;">
+                <button type="button" class="gps-btn" id="geoBtn" title="Detect Location">📍</button>
+            </div>
+            <div id="geoStatus" class="geo-status"></div>
         </div>
 
         <div class="input-group">
@@ -302,6 +317,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
+    // Image Upload Logic
     document.getElementById('imageInput').addEventListener('change', function(e) {
         const fileCount = e.target.files.length;
         const display = document.getElementById('fileNameDisplay');
@@ -317,6 +333,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             display.textContent = "Select up to 15 photos";
             display.style.color = "#fff";
+        }
+    });
+
+    // GPS Auto-Detect Logic
+    document.getElementById('geoBtn').addEventListener('click', function() {
+        const status = document.getElementById('geoStatus');
+        const input = document.getElementById('locationInput');
+        
+        status.textContent = "Detecting satellite location...";
+        status.style.color = "#888";
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(async (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                
+                try {
+                    // Reverse Geocode using free OpenStreetMap API
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+                    const data = await response.json();
+                    
+                    // Prioritize specific building/amenity, fallback to road/suburb
+                    let locName = data.address.amenity || data.address.building || data.address.road || data.address.suburb || data.display_name.split(',')[0];
+                    let city = data.address.city || data.address.town || data.address.county || "Kenya";
+                    
+                    input.value = locName + ", " + city;
+                    status.textContent = "Location secured.";
+                    status.style.color = "#2DD4BF";
+                } catch (e) {
+                    status.textContent = "Could not resolve address. Please type it manually.";
+                    status.style.color = "#F87171";
+                }
+            }, () => {
+                status.textContent = "Location access denied by browser. Please type it manually.";
+                status.style.color = "#F87171";
+            });
+        } else {
+            status.textContent = "Geolocation not supported by this browser.";
+            status.style.color = "#F87171";
         }
     });
 </script>
