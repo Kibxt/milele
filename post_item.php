@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (Full Spectrum AI & Cloud Storage)
+// MILELE - Premium Item Upload Terminal (With Item Format & Auto-Patch)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -15,11 +15,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $title = filter_input(INPUT_POST, 'title', FILTER_SANITIZE_SPECIAL_CHARS);
     $price = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
     $category = filter_input(INPUT_POST, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
+    $item_type = filter_input(INPUT_POST, 'item_type', FILTER_SANITIZE_SPECIAL_CHARS); // NEW: Item Format
     $description = filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS);
     $seller_id = $_SESSION['user_id'];
     
     $image_path = '';
     
+    // ==========================================
+    // 🛠️ SILENT DATABASE UPGRADE
+    // ==========================================
+    try {
+        // Automatically adds the item_type column if it doesn't exist
+        $pdo->exec("ALTER TABLE listings ADD COLUMN item_type VARCHAR(50) DEFAULT 'Physical'");
+    } catch (PDOException $e) { /* Column already exists, proceed normally */ }
+
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
         
         // ==========================================
@@ -35,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $cfile = new CURLFile($_FILES['image']['tmp_name'], $_FILES['image']['type'], $_FILES['image']['name']);
         
-        // FULL SPECTRUM: Firing 4 simultaneous AI models across the image
         curl_setopt($ch_ai, CURLOPT_POSTFIELDS, array(
             'models' => 'nudity-2.0,wad,offensive,gore', 
             'api_user' => $sightengine_user,
@@ -55,23 +63,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $is_safe = false;
         } elseif (isset($ai_result['status']) && $ai_result['status'] === 'success') {
             
-            // DEEP EXTRACTION: Hunting down every parameter Sightengine offers for these models
             $weapon_score = isset($ai_result['weapon']) ? $ai_result['weapon'] : (isset($ai_result['wad']['weapon']) ? $ai_result['wad']['weapon'] : 0);
             $alcohol_score = isset($ai_result['alcohol']) ? $ai_result['alcohol'] : (isset($ai_result['wad']['alcohol']) ? $ai_result['wad']['alcohol'] : 0);
             $drugs_score = isset($ai_result['drugs']) ? $ai_result['drugs'] : (isset($ai_result['wad']['drugs']) ? $ai_result['wad']['drugs'] : 0);
             
-            // Offensive and Gore models return their probabilities uniquely
             $offensive_score = isset($ai_result['offensive']['prob']) ? $ai_result['offensive']['prob'] : 0;
             $gore_score = isset($ai_result['gore']['prob']) ? $ai_result['gore']['prob'] : 0;
-
-            // Nudity 2.0 Check (safe score or none score)
             $safe_score = isset($ai_result['nudity']['safe']) ? $ai_result['nudity']['safe'] : (isset($ai_result['nudity']['none']) ? $ai_result['nudity']['none'] : 1);
 
-            // TRIGGER THRESHOLD: If any prohibited item scores over 40% (0.4), freeze the upload.
             if ($weapon_score > 0.4 || $alcohol_score > 0.4 || $drugs_score > 0.4 || $offensive_score > 0.4 || $gore_score > 0.4 || $safe_score < 0.5) {
                 $is_safe = false;
                 
-                // Convert to clean percentages
                 $w_pct = round($weapon_score * 100);
                 $a_pct = round($alcohol_score * 100);
                 $d_pct = round($drugs_score * 100);
@@ -79,9 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $g_pct = round($gore_score * 100);
                 $explicit_pct = 100 - round($safe_score * 100);
                 
-                // Construct a dynamic, surgical Violation Receipt
                 $error = "<strong>⚠️ UPLOAD REJECTED: Security Shield Triggered.</strong><br><br>The AI detected content violating our campus marketplace rules:<br><br>";
-                
                 if ($w_pct > 40) $error .= "🔫 <strong>Weapons & Firearms:</strong> {$w_pct}% confidence<br>";
                 if ($a_pct > 40) $error .= "🍺 <strong>Alcoholic Beverages:</strong> {$a_pct}% confidence<br>";
                 if ($d_pct > 40) $error .= "💊 <strong>Drugs & Narcotics:</strong> {$d_pct}% confidence<br>";
@@ -126,16 +126,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ==========================================
-    // 💾 CHECKPOINT 3: DATABASE SAVE
+    // 💾 CHECKPOINT 3: DATABASE SAVE (UPDATED)
     // ==========================================
     if (empty($error)) {
-        if ($title && $price > 0 && $description && $category && $image_path) {
+        if ($title && $price > 0 && $description && $category && $item_type && $image_path) {
             try {
-                $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :desc, :price, :img, 'active', NOW())");
+                // Insert statement upgraded to include item_type
+                $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, item_type, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :type, :desc, :price, :img, 'active', NOW())");
                 $stmt->execute([
                     ':seller' => $seller_id,
                     ':title' => $title,
                     ':category' => $category,
+                    ':type' => $item_type,
                     ':desc' => $description,
                     ':price' => $price,
                     ':img' => $image_path
@@ -208,6 +210,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
 
         <div class="input-group">
+            <label>Item Format</label>
+            <div class="input-wrapper">
+                <select name="item_type" required>
+                    <option value="" disabled selected>Select delivery format...</option>
+                    <option value="Physical">📦 Physical Goods (Requires Campus Meetup)</option>
+                    <option value="Digital">📄 Digital Goods (Documents / Notes)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="input-group">
             <label>Category</label>
             <div class="input-wrapper">
                 <select name="category" required>
@@ -229,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <div class="input-group">
             <label>Description</label>
-            <div class="input-wrapper"><textarea name="description" required></textarea></div>
+            <div class="input-wrapper"><textarea name="description" required placeholder="Describe the item condition or contents..."></textarea></div>
         </div>
 
         <button type="submit" class="btn-submit">List Item</button>
