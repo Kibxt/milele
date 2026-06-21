@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Item Upload Terminal (With Categories)
+// MILELE - Premium Item Upload Terminal (ImgBB Cloud Integration)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -19,31 +19,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $seller_id = $_SESSION['user_id'];
     
     $image_path = '';
+    
     if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
-        $upload_dir = 'uploads/';
         
-        // Force create the directory for cloud environments
-        if (!file_exists($upload_dir)) { mkdir($upload_dir, 0777, true); }
-
-        $file_extension = strtolower(pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION));
-        $new_filename = uniqid('milele_') . '.' . $file_extension;
-        $target_file = $upload_dir . $new_filename;
-
-        $check = getimagesize($_FILES['image']['tmp_name']);
-        if ($check !== false) {
-            if (move_uploaded_file($_FILES['image']['tmp_name'], $target_file)) {
-                $image_path = $target_file;
-            } else {
-                $error = "Server failed to save the image.";
-            }
+        // --- MILELE CLOUD IMAGE TELEPORTER ---
+        // Replace this with your actual ImgBB API Key
+        $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
+        
+        // Grab the raw image data and convert it to base64 for transmission
+        $image_base64 = base64_encode(file_get_contents($_FILES['image']['tmp_name']));
+        
+        // Open a secure connection to the ImgBB Cloud
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        
+        // Fire the image to the cloud and catch the response
+        $response = curl_exec($ch);
+        curl_close($ch);
+        
+        $result = json_decode($response, true);
+        
+        if (isset($result['data']['url'])) {
+            // SUCCESS! Grab the permanent cloud URL
+            $image_path = $result['data']['url']; 
         } else {
-            $error = "File is not a valid image.";
+            $error = "Cloud upload failed. Please try a different photo.";
         }
     }
 
     if (empty($error)) {
-        if ($title && $price > 0 && $description && $category) {
+        if ($title && $price > 0 && $description && $category && $image_path) {
             try {
+                // Save the permanent Cloud URL to your database
                 $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, category, description, price, image_path, listing_status, created_at) VALUES (:seller, :title, :category, :desc, :price, :img, 'active', NOW())");
                 $stmt->execute([
                     ':seller' => $seller_id,
@@ -59,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = "Database Error: " . htmlspecialchars($e->getMessage());
             }
         } else {
-            $error = "Please fill in all required fields.";
+            $error = "Please fill in all required fields and ensure the image uploads.";
         }
     }
 }
@@ -85,15 +96,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .file-upload-wrapper input[type="file"] { position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
         .btn-submit { width: 100%; padding: 16px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px;}
         .btn-cancel { display: block; text-align: center; margin-top: 15px; color: #888; text-decoration: none; }
+        
+        /* Loading Overlay */
+        #loader { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(5px); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; color: #2DD4BF; font-weight: bold; font-size: 1.2rem;}
+        .spinner { border: 4px solid rgba(45,212,191,0.2); border-top: 4px solid #2DD4BF; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin-bottom: 20px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
+<div id="loader">
+    <div class="spinner"></div>
+    Uploading securely to cloud...
+</div>
+
 <div class="upload-box">
     <h1>Post an Item</h1>
-    <?php if ($error) echo "<div style='color:#F87171; text-align:center; margin-bottom:15px;'>$error</div>"; ?>
+    <?php if ($error) echo "<div style='color:#F87171; text-align:center; margin-bottom:15px; background: rgba(248,113,113,0.1); padding: 10px; border-radius: 10px;'>$error</div>"; ?>
 
-    <form action="post_item.php" method="POST" enctype="multipart/form-data">
+    <form action="post_item.php" method="POST" enctype="multipart/form-data" onsubmit="document.getElementById('loader').style.display = 'flex';">
         <div class="input-group">
             <div class="file-upload-wrapper">
                 <div style="font-size: 2.5rem; color: #2DD4BF;">📸</div>
