@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Split-Screen Inbox (Diagnostic Engine Active)
+// MILELE - Premium Split-Screen Inbox (With Silent DB Override)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,7 +13,9 @@ $my_id = $_SESSION['user_id'];
 $active_user_id = filter_input(INPUT_GET, 'user', FILTER_VALIDATE_INT);
 $listing_context = filter_input(INPUT_GET, 'listing', FILTER_VALIDATE_INT);
 
-// 🛠️ SILENT DATABASE UPGRADE
+// ==========================================
+// 🛠️ SILENT DATABASE UPGRADES & OVERRIDES
+// ==========================================
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
         message_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -24,11 +26,17 @@ try {
         is_read TINYINT(1) DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
-} catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Table Creation Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
-}
+} catch (PDOException $e) {}
 
-// 📨 SEND MESSAGE LOGIC (Now wrapped in a diagnostic firewall)
+// THE OVERRIDE: Forcing the database to allow messages without a listing attached
+try { 
+    $pdo->exec("ALTER TABLE messages MODIFY listing_id INT NULL DEFAULT NULL"); 
+} catch (PDOException $e) {}
+
+
+// ==========================================
+// 📨 SEND MESSAGE LOGIC 
+// ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $receiver_id = filter_input(INPUT_POST, 'receiver_id', FILTER_VALIDATE_INT);
     $msg_text = isset($_POST['message']) ? trim($_POST['message']) : ''; 
@@ -38,12 +46,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $clean_text = htmlspecialchars($msg_text, ENT_QUOTES, 'UTF-8');
             $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, listing_id, message_text, created_at) VALUES (?, ?, ?, ?, NOW())");
+            // If list_id doesn't exist, we send explicitly NULL
             $stmt->execute([$my_id, $receiver_id, $list_id ? $list_id : null, $clean_text]);
             
             header("Location: inbox.php?user=$receiver_id" . ($list_id ? "&listing=$list_id" : ""));
             exit();
         } catch (PDOException $e) {
-            // UNMASKED: This will print the exact reason the send function crashed
             die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Send Message Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
         }
     }
