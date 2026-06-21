@@ -1,5 +1,5 @@
 <?php
-// MILELE - Global Marketplace Feed
+// MILELE - Global Marketplace Feed (Fully Restored)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -28,10 +28,10 @@ try {
         body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 50px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; }
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 50px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 20px; flex-wrap: wrap; gap: 20px;}
         .nav-bar h1 { color: #2DD4BF; margin: 0; font-size: 2.5rem; letter-spacing: -1px; font-weight: 800;}
-        .nav-buttons { display: flex; gap: 15px; }
-        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold;}
+        .nav-buttons { display: flex; gap: 10px; flex-wrap: wrap;}
+        .btn-glass { padding: 10px 18px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.95rem; font-weight: bold; display: flex; align-items: center; gap: 5px;}
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
         .btn-accent { background: #2DD4BF; color: #000; border: none; }
         .btn-accent:hover { background: #fff; }
@@ -60,7 +60,7 @@ try {
         .item-seller { font-size: 0.85rem; color: #666; margin-bottom: 15px; }
         .item-price { color: #fff; font-size: 1.4rem; font-weight: bold; margin-bottom: 20px; }
         
-        .btn-buy { display: block; text-align: center; width: 100%; padding: 14px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 1rem; transition: 0.2s; border: 1px solid rgba(45,212,191,0.2); box-sizing: border-box;}
+        .btn-buy { display: block; text-align: center; width: 100%; padding: 14px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 12px; text-decoration: none; font-weight: bold; font-size: 1rem; transition: 0.2s; border: 1px solid rgba(45,212,191,0.2); box-sizing: border-box; margin-top: auto;}
         .btn-buy:hover { background: #2DD4BF; color: #000; }
     </style>
 </head>
@@ -71,7 +71,9 @@ try {
         <h1>MILELE</h1>
         <div class="nav-buttons">
             <?php if (isset($_SESSION['user_id'])): ?>
-                <a href="post_item.php" class="btn-glass">Sell an Item</a>
+                <a href="post_item.php" class="btn-glass">➕ Sell Item</a>
+                <a href="favourites.php" class="btn-glass">❤️ Favourites</a>
+                <a href="inbox.php" class="btn-glass">💬 Inbox</a>
                 <a href="profile.php" class="btn-glass btn-accent">My Profile</a>
             <?php else: ?>
                 <a href="login.php" class="btn-glass">Log In</a>
@@ -91,14 +93,19 @@ try {
         <div class="grid">
             <?php foreach ($items as $item): ?>
                 <div class="item-card">
-                    <img src="https://via.placeholder.com/400x400/111111/333333?text=MILELE+Item" alt="Item Image">
+                    <?php 
+                        // Fetch the real image or fallback to placeholder if empty
+                        // Note: If your database uses a different column name like 'image_url', change 'image_path' below.
+                        $image_src = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE+Item';
+                    ?>
+                    <img src="<?php echo $image_src; ?>" alt="<?php echo htmlspecialchars($item['title']); ?>">
                     
                     <div class="item-category">Campus Goods</div>
                     <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
                     <div class="item-seller">Seller: <?php echo htmlspecialchars(explode(' ', $item['seller_name'])[0]); ?></div>
                     <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
                     
-                    <a href="checkout.php?id=<?php echo $item['listing_id']; ?>" class="btn-buy">Purchase Securely</a>
+                    <a href="item.php?id=<?php echo $item['listing_id']; ?>" class="btn-buy">View Item</a>
                 </div>
             <?php endforeach; ?>
         </div>
