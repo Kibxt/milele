@@ -1,5 +1,5 @@
 <?php
-// MILELE - Ultimate Admin Control Center (Escrow Enforcement & Advanced Metrics)
+// MILELE - Ultimate Admin Control Center (Strict Email Security)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -14,18 +14,32 @@ $error = '';
 $success = '';
 
 // ==========================================
-// 🛠️ AUTO-ELEVATE & SECURITY CHECK
+// 🛡️ STRICT EMAIL-BASED SECURITY CHECK
 // ==========================================
-try { $pdo->exec("UPDATE users SET is_admin = 1 WHERE user_id = 1"); } catch(PDOException $e) {}
+$allowed_admins = [
+    'kibeta425@gmail.com', 
+    'alvin.kibet@stratmore.edu', 
+    'alvin.kibet@strathmore.edu', // Added correct spelling fallback
+    'yegonkibe4@gmail.com'
+];
 
 try {
-    $stmt = $pdo->prepare("SELECT is_admin, account_state FROM users WHERE user_id = ?");
+    $stmt = $pdo->prepare("SELECT email FROM users WHERE user_id = ?");
     $stmt->execute([$my_id]);
     $me = $stmt->fetch();
     
-    if (!$me || (empty($me['is_admin']) && $me['account_state'] !== 'admin')) {
-        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:sans-serif; font-size:1.5rem;'>🚨 Access Denied. You do not have Administrator privileges.</div>");
+    $user_email = $me ? strtolower(trim($me['email'])) : '';
+
+    if (!in_array($user_email, $allowed_admins)) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:-apple-system, sans-serif; font-size:1.5rem; border-top: 5px solid #F87171;'>
+            <h2>🚨 Access Denied</h2>
+            <p style='font-size: 1rem; color: #888;'>The email account <strong>" . htmlspecialchars($user_email) . "</strong> does not have Administrator privileges.</p>
+        </div>");
     }
+
+    // Auto-sync the database is_admin flag for these specific emails to keep the DB clean
+    $pdo->prepare("UPDATE users SET is_admin = 1 WHERE email = ?")->execute([$user_email]);
+
 } catch (PDOException $e) {
     die("Security Check Error.");
 }
@@ -72,7 +86,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             
             if ($target_escrow) {
                 if ($action === 'force_pay') {
-                    // Find seller to increment their stats
                     $stmt_seller = $pdo->prepare("SELECT seller_id FROM listings WHERE listing_id = ? AND listing_status = 'escrow'");
                     $stmt_seller->execute([$target_escrow]);
                     $seller_id = $stmt_seller->fetchColumn();
@@ -85,7 +98,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         $error = "Escrow transaction not found or already resolved.";
                     }
                 } elseif ($action === 'refund_escrow') {
-                    // Reset item to active, strip buyer and PIN
                     $pdo->prepare("UPDATE listings SET listing_status = 'active', buyer_id = NULL, escrow_pin = NULL WHERE listing_id = ? AND listing_status = 'escrow'")->execute([$target_escrow]);
                     $success = "↩️ REFUND EXECUTED: Transaction cancelled. Item returned to market.";
                 }
@@ -101,15 +113,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // 📊 FETCH ADVANCED PLATFORM METRICS
 // ==========================================
 try {
-    // Advanced User Stats
-    $user_stats = $pdo->query("
-        SELECT 
-            COUNT(user_id) as total_users,
-            SUM(CASE WHEN account_state = 'frozen' THEN 1 ELSE 0 END) as frozen_users
-        FROM users
-    ")->fetch();
+    $user_stats = $pdo->query("SELECT COUNT(user_id) as total_users, SUM(CASE WHEN account_state = 'frozen' THEN 1 ELSE 0 END) as frozen_users FROM users")->fetch();
 
-    // Advanced Listing & Financial Stats
     $list_stats = $pdo->query("
         SELECT 
             COUNT(listing_id) as total_listings,
@@ -121,12 +126,10 @@ try {
         FROM listings
     ")->fetch();
 
-    // Ensure numeric values
     $total_volume = $list_stats['total_volume'] ?? 0;
     $total_revenue = $list_stats['total_revenue'] ?? 0;
 
-    // Data Tables
-    $all_users = $pdo->query("SELECT user_id, full_name, university_name, account_state, completed_escrows, created_at FROM users ORDER BY created_at DESC")->fetchAll();
+    $all_users = $pdo->query("SELECT user_id, full_name, email, university_name, account_state, completed_escrows, created_at FROM users ORDER BY created_at DESC")->fetchAll();
     
     $all_listings = $pdo->query("
         SELECT l.listing_id, l.title, l.price, l.listing_status, l.created_at, u.full_name as seller_name 
@@ -155,7 +158,6 @@ try {
     <title>Admin Control Center | MILELE</title>
     <style>
         body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh;}
-        
         .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.9); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px);}
         .brand { font-size: 1.8rem; font-weight: 900; color: #8B5CF6; text-decoration: none; letter-spacing: -1px;}
         .admin-badge { background: rgba(139, 92, 246, 0.2); color: #A78BFA; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; border: 1px solid rgba(139, 92, 246, 0.4); margin-left: 10px; vertical-align: middle;}
@@ -163,12 +165,10 @@ try {
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
 
         .container { max-width: 1400px; margin: 40px auto; padding: 0 20px; }
-
         .alert { padding: 15px; border-radius: 12px; margin-bottom: 30px; font-weight: bold;}
         .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
         .alert-success { background: rgba(52,211,153,0.1); color: #34D399; border: 1px solid rgba(52,211,153,0.3); }
 
-        /* Top KPI Metrics */
         .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 50px;}
         .metric-card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.08); padding: 25px; border-radius: 20px; position: relative; overflow: hidden;}
         .metric-title { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
@@ -176,9 +176,7 @@ try {
         .metric-value.revenue { color: #34D399; }
         .metric-value.volume { color: #8B5CF6; }
         .metric-value.escrow { color: #F59E0B; }
-        .metric-value.danger { color: #F87171; }
 
-        /* Data Tables */
         .table-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; margin-bottom: 40px;}
         .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;}
         .table-title { font-size: 1.5rem; font-weight: bold; margin: 0; color: #fff;}
@@ -188,14 +186,12 @@ try {
         td { padding: 15px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #ccc;}
         tr:hover td { background: rgba(255,255,255,0.02); }
 
-        /* Status Badges */
         .status { padding: 5px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; display: inline-block;}
         .s-active { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); }
         .s-escrow { background: rgba(245,158,11,0.1); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3); }
         .s-sold { background: rgba(107,114,128,0.1); color: #9CA3AF; border: 1px solid rgba(107,114,128,0.3); }
         .s-frozen, .s-banned { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
 
-        /* Action Buttons */
         .action-form { display: inline; margin: 0;}
         .btn-action { padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; border: none; transition: 0.2s;}
         
@@ -213,7 +209,6 @@ try {
         
         .btn-refund { background: rgba(245,158,11,0.1); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3);}
         .btn-refund:hover { background: #F59E0B; color: #000;}
-
     </style>
 </head>
 <body>
@@ -296,12 +291,12 @@ try {
                                 <form method="POST" class="action-form">
                                     <input type="hidden" name="action" value="force_pay">
                                     <input type="hidden" name="target_escrow" value="<?php echo $esc['listing_id']; ?>">
-                                    <button type="submit" class="btn-action btn-force-pay" onclick="return confirm('FORCE PAY: This will manually release funds to the seller. Confirm?');">Force Pay</button>
+                                    <button type="submit" class="btn-action btn-force-pay" onclick="return confirm('FORCE PAY: Manually release funds to seller?');">Force Pay</button>
                                 </form>
                                 <form method="POST" class="action-form">
                                     <input type="hidden" name="action" value="refund_escrow">
                                     <input type="hidden" name="target_escrow" value="<?php echo $esc['listing_id']; ?>">
-                                    <button type="submit" class="btn-action btn-refund" onclick="return confirm('REFUND: This cancels the transaction and returns the item to active status. Confirm?');">Refund</button>
+                                    <button type="submit" class="btn-action btn-refund" onclick="return confirm('REFUND: Cancel transaction and return item to market?');">Refund</button>
                                 </form>
                             </div>
                         </td>
@@ -366,7 +361,7 @@ try {
                                 <form method="POST" class="action-form">
                                     <input type="hidden" name="action" value="delete_listing">
                                     <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
-                                    <button type="submit" class="btn-action btn-delete" onclick="return confirm('Permanently wipe this listing from the database?');">Delete</button>
+                                    <button type="submit" class="btn-action btn-delete" onclick="return confirm('Permanently wipe this listing?');">Delete</button>
                                 </form>
                             </div>
                         </td>
@@ -384,10 +379,9 @@ try {
         <table>
             <thead>
                 <tr>
-                    <th>ID</th>
+                    <th>Email</th>
                     <th>Full Name</th>
                     <th>University</th>
-                    <th>Deals Done</th>
                     <th>Status</th>
                     <th>Action</th>
                 </tr>
@@ -395,10 +389,9 @@ try {
             <tbody>
                 <?php foreach($all_users as $u): ?>
                 <tr>
-                    <td>#<?php echo $u['user_id']; ?></td>
+                    <td style="color:#aaa; font-size: 0.9rem;"><?php echo htmlspecialchars($u['email']); ?></td>
                     <td style="color:#fff; font-weight:bold;"><?php echo htmlspecialchars($u['full_name']); ?></td>
                     <td><?php echo htmlspecialchars($u['university_name']); ?></td>
-                    <td><?php echo (int)$u['completed_escrows']; ?></td>
                     <td>
                         <?php 
                             if($u['account_state'] === 'frozen') echo '<span class="status s-frozen">Frozen</span>';
@@ -416,7 +409,7 @@ try {
                                     <button type="submit" class="btn-action btn-unfreeze">Unfreeze</button>
                                 <?php else: ?>
                                     <input type="hidden" name="new_state" value="frozen">
-                                    <button type="submit" class="btn-action btn-freeze" onclick="return confirm('Freeze this user? They will not be able to log in or sell.');">Freeze</button>
+                                    <button type="submit" class="btn-action btn-freeze" onclick="return confirm('Freeze this user?');">Freeze</button>
                                 <?php endif; ?>
                             </form>
                         <?php else: ?>
@@ -430,6 +423,5 @@ try {
     </div>
 
 </div>
-
 </body>
 </html>

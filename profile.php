@@ -1,5 +1,5 @@
 <?php
-// MILELE - Private User Dashboard (Escrow Engine + Admin Restored)
+// MILELE - Private User Dashboard (Strict Email Admin Link)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -20,18 +20,12 @@ $my_id = $_SESSION['user_id'];
 $error = '';
 $success = '';
 
-// ==========================================
-// 🛠️ SILENT DATABASE UPGRADES
-// ==========================================
-try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
-try { $pdo->exec("ALTER TABLE listings ADD COLUMN buyer_id INT DEFAULT NULL"); } catch (PDOException $e) {}
-try { $pdo->exec("ALTER TABLE listings ADD COLUMN escrow_pin VARCHAR(10) DEFAULT NULL"); } catch (PDOException $e) {}
-try { $pdo->exec("ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {} // Ensure admin column exists
-try {
-    $pdo->exec("CREATE TABLE IF NOT EXISTS follows (
-        follower_id INT NOT NULL, followed_id INT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (follower_id, followed_id)
-    )");
-} catch (PDOException $e) {}
+$allowed_admins = [
+    'kibeta425@gmail.com', 
+    'alvin.kibet@stratmore.edu', 
+    'alvin.kibet@strathmore.edu', 
+    'yegonkibe4@gmail.com'
+];
 
 // ==========================================
 // 🔐 ESCROW RELEASE LOGIC
@@ -58,14 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 // ==========================================
 // 📊 FETCH DASHBOARD DATA
 // ==========================================
-// 1. Profile Data (Admin check added)
 try {
-    $stmt = $pdo->prepare("SELECT full_name, university_name, profile_picture, completed_escrows, account_state, is_admin FROM users WHERE user_id = ?");
+    // 1. Profile Data (Fetch email to verify admin button)
+    $stmt = $pdo->prepare("SELECT full_name, email, university_name, profile_picture, completed_escrows, account_state FROM users WHERE user_id = ?");
     $stmt->execute([$my_id]);
     $user = $stmt->fetch();
     
-    // Determine if user has admin privileges
-    $is_admin_user = (!empty($user['is_admin']) || $user['account_state'] === 'admin');
+    // Strict verification for the Admin button UI
+    $is_admin_user = $user ? in_array(strtolower(trim($user['email'])), $allowed_admins) : false;
 
 } catch (PDOException $e) { $error .= "User Data Error: " . $e->getMessage(); }
 
@@ -121,7 +115,6 @@ try {
         .btn-red { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3);}
         .btn-red:hover { background: #EF4444; color: #000; }
         
-        /* Admin Button Styling */
         .btn-admin { background: #8B5CF6; color: #fff; border: 1px solid #A78BFA; padding: 10px 20px; border-radius: 12px; font-weight: bold; text-decoration: none; transition: 0.3s;}
         .btn-admin:hover { background: #A78BFA; color: #000;}
 
