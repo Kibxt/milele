@@ -1,5 +1,5 @@
 <?php
-// MILELE - Strict Session Registration Engine
+// MILELE - Strict Session Registration Engine (Secured)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -17,12 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $university = trim(filter_input(INPUT_POST, 'university', FILTER_SANITIZE_SPECIAL_CHARS));
     $password = $_POST['password'];
 
-    // Enforce Campus Emails
     if (!strpos($email, '.edu') && !strpos($email, '.ac.ke')) {
         $error = "You must use a valid university email address (.edu or .ac.ke) to join MILELE.";
     } else {
         try {
-            // Check if email already exists in DB
             $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
             $stmt->execute([$email]);
             if ($stmt->fetch()) {
@@ -34,10 +32,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ==========================================
                 // 📧 LIVE BREVO EMAIL API INTEGRATION
                 // ==========================================
+                // Using getenv() to bypass GitHub Push Protection
                 $api_key = getenv('BREVO_API_KEY'); 
                 
                 $email_data = [
-                    'sender' => ['name' => 'MILELE Security', 'email' => 'kibeta425@gmail.com'], // Ensure this matches your Brevo account
+                    'sender' => ['name' => 'MILELE Security', 'email' => 'kibeta425@gmail.com'], 
                     'to' => [['email' => $email, 'name' => $full_name]],
                     'subject' => 'Your MILELE Verification Code',
                     'htmlContent' => "
@@ -69,7 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_close($ch);
                 // ==========================================
 
-                // 🔥 HOLD DATA IN SECURE SESSION, DO NOT WRITE TO DATABASE YET 🔥
                 $_SESSION['pending_reg'] = [
                     'full_name' => $full_name,
                     'email' => $email,
