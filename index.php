@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Global Feed (With Live Notification Engine)
+// MILELE - Premium Global Feed (With Profile Pictures)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -7,13 +7,10 @@ require 'db.php';
 $search = filter_input(INPUT_GET, 'search', FILTER_SANITIZE_SPECIAL_CHARS);
 $category = filter_input(INPUT_GET, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
 
-// ==========================================
 // 🔔 UNREAD MESSAGE TRACKER
-// ==========================================
 $unread_count = 0;
 if (isset($_SESSION['user_id'])) {
     try {
-        // We safely check the messages table. If it doesn't exist yet, it fails silently and ignores the count.
         $stmt_msg = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE receiver_id = :uid AND is_read = 0");
         $stmt_msg->execute([':uid' => $_SESSION['user_id']]);
         $unread_count = $stmt_msg->fetchColumn();
@@ -22,9 +19,12 @@ if (isset($_SESSION['user_id'])) {
     }
 }
 
-// Load Feed Items
+// ==========================================
+// 🛒 LOAD FEED ITEMS (Now fetching Profile Pics)
+// ==========================================
 try {
-    $sql = "SELECT l.*, u.university_name FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
+    // UPGRADED SQL: Pulls full_name and profile_picture from the users table
+    $sql = "SELECT l.*, u.university_name, u.full_name, u.profile_picture FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
     $params = [];
 
     if (!empty($search)) {
@@ -56,7 +56,6 @@ try {
     <style>
         body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
         
-        /* Navigation */
         .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
         .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
         .nav-actions { display: flex; gap: 15px; align-items: center;}
@@ -66,7 +65,6 @@ try {
         .btn-accent { background: #2DD4BF; color: #000; border: none; }
         .btn-accent:hover { background: #fff; }
 
-        /* Notification Badge */
         .notif-badge { position: absolute; top: -6px; right: -6px; background: #EF4444; color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 10px; border: 2px solid #050505; animation: pulse 2s infinite; pointer-events: none;}
         @keyframes pulse {
             0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
@@ -74,28 +72,23 @@ try {
             100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
         }
 
-        /* Slide-up Toast Alert */
         .toast-alert { position: fixed; bottom: -100px; right: 20px; background: rgba(20,20,20,0.9); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); padding: 15px 20px; border-radius: 16px; display: flex; align-items: center; gap: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); transition: bottom 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 1000; min-width: 250px;}
         .toast-alert.show { bottom: 20px; }
 
-        /* Hero */
         .hero { padding: 80px 20px 60px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
         .hero h1 { font-size: 3.5rem; margin: 0 0 15px 0; line-height: 1.1; }
         .hero p { color: #888; font-size: 1.1rem; margin-bottom: 40px; }
         
-        /* Search */
         .search-form { max-width: 600px; margin: 0 auto; display: flex; gap: 10px; }
         .search-input { flex-grow: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); padding: 18px 24px; border-radius: 16px; color: #fff; font-size: 1.1rem; outline: none; transition: 0.3s;}
         .search-input:focus { border-color: #2DD4BF; background: rgba(255,255,255,0.08);}
         .search-btn { padding: 0 30px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1rem; cursor: pointer; transition: 0.2s;}
         .search-btn:hover { background: #fff; transform: translateY(-2px);}
 
-        /* Categories */
         .categories { display: flex; justify-content: center; gap: 10px; padding: 0 20px 40px; flex-wrap: wrap; }
         .cat-pill { padding: 10px 20px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); color: #888; text-decoration: none; border-radius: 30px; font-size: 0.9rem; transition: 0.2s; white-space: nowrap;}
         .cat-pill:hover, .cat-pill.active { background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.3); }
 
-        /* The Premium Grid */
         .container { max-width: 1200px; margin: 0 auto; padding: 0 20px 80px; flex-grow: 1; width: 100%; box-sizing: border-box;}
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 30px; }
         
@@ -118,7 +111,14 @@ try {
         .card-price { font-size: 1.4rem; color: #2DD4BF; font-weight: bold; margin-bottom: 15px;}
         
         .card-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;}
-        .card-uni { font-size: 0.85rem; color: #888; display: flex; align-items: center; gap: 5px;}
+        
+        /* New Seller Info Styling */
+        .seller-info { display: flex; align-items: center; gap: 10px;}
+        .seller-avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(45,212,191,0.5); background: #111; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; color: #2DD4BF;}
+        .seller-details { display: flex; flex-direction: column; line-height: 1.2;}
+        .seller-name { font-size: 0.85rem; font-weight: bold; color: #fff;}
+        .card-uni { font-size: 0.75rem; color: #888;}
+        
         .btn-view { padding: 8px 16px; background: rgba(255,255,255,0.05); color: #fff; border-radius: 10px; font-size: 0.85rem; font-weight: bold; transition: 0.2s;}
         .card:hover .btn-view { background: #2DD4BF; color: #000; }
 
@@ -131,8 +131,6 @@ try {
             .search-form { flex-direction: column; }
             .search-btn { padding: 18px; }
             .swipe-hint { opacity: 1; } 
-            
-            /* Responsive nav tweaks */
             .nav-actions { gap: 10px; }
             .btn-glass { padding: 8px 12px; font-size: 0.85rem; }
             .brand { font-size: 1.4rem; }
@@ -168,9 +166,7 @@ try {
         </div>
         <a href="inbox.php" style="color: #2DD4BF; font-weight: bold; text-decoration: none; font-size: 0.9rem; padding: 5px;">View</a>
     </div>
-    
     <script>
-        // Slides the toast in after 1 second, and hides it after 6 seconds
         setTimeout(() => { document.getElementById('msgToast').classList.add('show'); }, 1000);
         setTimeout(() => { document.getElementById('msgToast').classList.remove('show'); }, 6000);
     </script>
@@ -189,16 +185,13 @@ try {
 
 <div class="categories">
     <a href="index.php<?php echo $search ? '?search='.urlencode($search) : ''; ?>" class="cat-pill <?php echo empty($category) ? 'active' : ''; ?>">All Items</a>
-    
     <?php 
     $cats = ['Electronics', 'Textbooks', 'Fashion', 'Dorm Essentials', 'Services', 'Other'];
     foreach ($cats as $cat): 
         $link = "?category=" . urlencode($cat);
         if ($search) $link .= "&search=" . urlencode($search);
     ?>
-        <a href="<?php echo $link; ?>" class="cat-pill <?php echo ($category === $cat) ? 'active' : ''; ?>">
-            <?php echo $cat; ?>
-        </a>
+        <a href="<?php echo $link; ?>" class="cat-pill <?php echo ($category === $cat) ? 'active' : ''; ?>"><?php echo $cat; ?></a>
     <?php endforeach; ?>
 </div>
 
@@ -243,7 +236,19 @@ try {
                         <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
                         
                         <div class="card-footer">
-                            <div class="card-uni">🎓 <?php echo htmlspecialchars(explode(' ', $item['university_name'])[0]); ?></div>
+                            <div class="seller-info">
+                                <?php if($item['profile_picture']): ?>
+                                    <img src="<?php echo htmlspecialchars($item['profile_picture']); ?>" class="seller-avatar" alt="Avatar">
+                                <?php else: ?>
+                                    <div class="seller-avatar"><?php echo strtoupper(substr($item['full_name'], 0, 1)); ?></div>
+                                <?php endif; ?>
+                                
+                                <div class="seller-details">
+                                    <span class="seller-name"><?php echo htmlspecialchars(explode(' ', $item['full_name'])[0]); ?></span>
+                                    <span class="card-uni">🎓 <?php echo htmlspecialchars(explode(' ', $item['university_name'])[0]); ?></span>
+                                </div>
+                            </div>
+                            
                             <div class="btn-view">Details</div>
                         </div>
                     </div>

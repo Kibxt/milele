@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Split-Screen Inbox (With Silent DB Override)
+// MILELE - Premium Split-Screen Inbox (With Profile Pictures)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -13,9 +13,6 @@ $my_id = $_SESSION['user_id'];
 $active_user_id = filter_input(INPUT_GET, 'user', FILTER_VALIDATE_INT);
 $listing_context = filter_input(INPUT_GET, 'listing', FILTER_VALIDATE_INT);
 
-// ==========================================
-// 🛠️ SILENT DATABASE UPGRADES & OVERRIDES
-// ==========================================
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS messages (
         message_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -28,15 +25,9 @@ try {
     )");
 } catch (PDOException $e) {}
 
-// THE OVERRIDE: Forcing the database to allow messages without a listing attached
-try { 
-    $pdo->exec("ALTER TABLE messages MODIFY listing_id INT NULL DEFAULT NULL"); 
-} catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE messages MODIFY listing_id INT NULL DEFAULT NULL"); } catch (PDOException $e) {}
 
 
-// ==========================================
-// 📨 SEND MESSAGE LOGIC 
-// ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $receiver_id = filter_input(INPUT_POST, 'receiver_id', FILTER_VALIDATE_INT);
     $msg_text = isset($_POST['message']) ? trim($_POST['message']) : ''; 
@@ -46,9 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         try {
             $clean_text = htmlspecialchars($msg_text, ENT_QUOTES, 'UTF-8');
             $stmt = $pdo->prepare("INSERT INTO messages (sender_id, receiver_id, listing_id, message_text, created_at) VALUES (?, ?, ?, ?, NOW())");
-            // If list_id doesn't exist, we send explicitly NULL
             $stmt->execute([$my_id, $receiver_id, $list_id ? $list_id : null, $clean_text]);
-            
             header("Location: inbox.php?user=$receiver_id" . ($list_id ? "&listing=$list_id" : ""));
             exit();
         } catch (PDOException $e) {
@@ -57,19 +46,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// 👁️ MARK MESSAGES AS READ
 if ($active_user_id) {
     try {
         $pdo->prepare("UPDATE messages SET is_read = 1 WHERE sender_id = ? AND receiver_id = ?")->execute([$active_user_id, $my_id]);
-    } catch (PDOException $e) {
-        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Update Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
-    }
+    } catch (PDOException $e) {}
 }
 
-// 🗂️ FETCH CONVERSATIONS (SIDEBAR)
+// ==========================================
+// 🗂️ FETCH CONVERSATIONS (Now with Profile Pics)
+// ==========================================
 try {
+    // UPGRADED SQL: Pulls u.profile_picture
     $stmt_convos = $pdo->prepare("
-        SELECT u.user_id, u.full_name,
+        SELECT u.user_id, u.full_name, u.profile_picture,
             (SELECT message_text FROM messages WHERE (sender_id = u.user_id AND receiver_id = :my_id) OR (sender_id = :my_id AND receiver_id = u.user_id) ORDER BY created_at DESC LIMIT 1) as last_msg,
             (SELECT COUNT(*) FROM messages WHERE sender_id = u.user_id AND receiver_id = :my_id AND is_read = 0) as unread
         FROM users u
@@ -86,15 +75,26 @@ try {
     die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Sidebar Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
 }
 
-// 💬 FETCH ACTIVE CHAT
+// ==========================================
+// 💬 FETCH ACTIVE CHAT (Now with Profile Pics)
+// ==========================================
 $chat_history = [];
 $active_user_name = "Select a conversation";
+$active_user_pic = null;
 
 if ($active_user_id) {
     try {
-        $stmt_name = $pdo->prepare("SELECT full_name FROM users WHERE user_id = ?");
+        // UPGRADED SQL: Pulls profile_picture
+        $stmt_name = $pdo->prepare("SELECT full_name, profile_picture FROM users WHERE user_id = ?");
         $stmt_name->execute([$active_user_id]);
-        $active_user_name = $stmt_name->fetchColumn() ?: "Unknown User";
+        $active_user_data = $stmt_name->fetch();
+        
+        if($active_user_data) {
+            $active_user_name = $active_user_data['full_name'];
+            $active_user_pic = $active_user_data['profile_picture'];
+        } else {
+            $active_user_name = "Unknown User";
+        }
 
         $stmt_chat = $pdo->prepare("
             SELECT * FROM messages 
@@ -138,7 +138,7 @@ function formatChatMessage($text) {
         
         .convo-item { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.02); display: flex; align-items: center; gap: 15px; cursor: pointer; text-decoration: none; color: #fff; transition: 0.2s;}
         .convo-item:hover, .convo-item.active { background: rgba(45,212,191,0.05); border-left: 4px solid #2DD4BF; }
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: #111; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #2DD4BF; flex-shrink: 0;}
+        .avatar { width: 45px; height: 45px; border-radius: 50%; background: #111; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #2DD4BF; flex-shrink: 0; object-fit: cover;}
         .convo-details { flex-grow: 1; overflow: hidden; }
         .convo-name { font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;}
         .convo-preview { font-size: 0.85rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -217,7 +217,13 @@ function formatChatMessage($text) {
             <?php else: ?>
                 <?php foreach($conversations as $convo): ?>
                     <a href="inbox.php?user=<?php echo $convo['user_id']; ?>" class="convo-item <?php echo ($active_user_id == $convo['user_id']) ? 'active' : ''; ?>">
-                        <div class="avatar"><?php echo strtoupper(substr($convo['full_name'], 0, 1)); ?></div>
+                        
+                        <?php if($convo['profile_picture']): ?>
+                            <img src="<?php echo htmlspecialchars($convo['profile_picture']); ?>" class="avatar" alt="Avatar">
+                        <?php else: ?>
+                            <div class="avatar"><?php echo strtoupper(substr($convo['full_name'], 0, 1)); ?></div>
+                        <?php endif; ?>
+
                         <div class="convo-details">
                             <div class="convo-name">
                                 <?php echo htmlspecialchars($convo['full_name']); ?>
@@ -250,7 +256,13 @@ function formatChatMessage($text) {
             <div class="chat-header">
                 <a href="inbox.php" class="mobile-back">←</a>
                 <a href="public_profile.php?id=<?php echo $active_user_id; ?>" title="View Profile" style="text-decoration: none;">
-                    <div class="avatar" style="cursor:pointer; border-color: #2DD4BF; transition: 0.2s;" onmouseover="this.style.background='rgba(45,212,191,0.2)'" onmouseout="this.style.background='#111'"><?php echo strtoupper(substr($active_user_name, 0, 1)); ?></div>
+                    
+                    <?php if($active_user_pic): ?>
+                        <img src="<?php echo htmlspecialchars($active_user_pic); ?>" class="avatar" style="border-color: #2DD4BF; transition: 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" alt="Avatar">
+                    <?php else: ?>
+                        <div class="avatar" style="cursor:pointer; border-color: #2DD4BF; transition: 0.2s;" onmouseover="this.style.background='rgba(45,212,191,0.2)'" onmouseout="this.style.background='#111'"><?php echo strtoupper(substr($active_user_name, 0, 1)); ?></div>
+                    <?php endif; ?>
+                    
                 </a>
                 <a href="public_profile.php?id=<?php echo $active_user_id; ?>" class="chat-header-name"><?php echo htmlspecialchars($active_user_name); ?></a>
                 

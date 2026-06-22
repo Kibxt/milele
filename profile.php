@@ -1,5 +1,5 @@
 <?php
-// MILELE - Profile Dashboard (With Premium Dispute Modal)
+// MILELE - Private User Dashboard (Profile Pic & Stats)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -9,289 +9,167 @@ if (!isset($_SESSION['user_id'])) {
 }
 
 require 'db.php';
-$user_id = $_SESSION['user_id'];
+$my_id = $_SESSION['user_id'];
+$error = '';
+$success = '';
 
+// ==========================================
+// 🛠️ SILENT DATABASE UPGRADES (SOCIAL ENGINE)
+// ==========================================
+try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
 try {
-    $stmt = $pdo->prepare("SELECT full_name, email, university_name, completed_escrows, created_at, is_admin FROM users WHERE user_id = :id");
-    $stmt->execute([':id' => $user_id]);
-    $user = $stmt->fetch();
+    $pdo->exec("CREATE TABLE IF NOT EXISTS follows (
+        follower_id INT NOT NULL,
+        followed_id INT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (follower_id, followed_id)
+    )");
+} catch (PDOException $e) {}
 
-    $stmt_listings = $pdo->prepare("SELECT * FROM listings WHERE seller_id = :id AND listing_status != 'deleted' ORDER BY created_at DESC");
-    $stmt_listings->execute([':id' => $user_id]);
-    $my_listings = $stmt_listings->fetchAll();
+// ==========================================
+// 📸 PROFILE PICTURE UPLOAD LOGIC
+// ==========================================
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === UPLOAD_ERR_OK) {
+    $tmp_name = $_FILES['profile_pic']['tmp_name'];
+    $file_type = $_FILES['profile_pic']['type'];
+    $file_name = $_FILES['profile_pic']['name'];
 
-    $stmt_history = $pdo->prepare("
-        SELECT t.*, l.title, u.full_name as seller_name 
-        FROM escrow_transactions t
-        JOIN listings l ON t.listing_id = l.listing_id
-        JOIN users u ON t.seller_id = u.user_id
-        WHERE t.buyer_id = :id
-        ORDER BY t.created_at DESC
-    ");
-    $stmt_history->execute([':id' => $user_id]);
-    $purchase_history = $stmt_history->fetchAll();
+    // 1. AI Security Scan (No explicit profile pictures)
+    $sightengine_user = '1287637059';     
+    $sightengine_secret = 'vVLakzVx9WAHwqvg9o8p9ucggiu5byzJ'; 
+    
+    $ch_ai = curl_init('https://api.sightengine.com/1.0/check.json');
+    curl_setopt($ch_ai, CURLOPT_POST, true);
+    curl_setopt($ch_ai, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch_ai, CURLOPT_SSL_VERIFYPEER, false);
+    $cfile = new CURLFile($tmp_name, $file_type, $file_name);
+    curl_setopt($ch_ai, CURLOPT_POSTFIELDS, ['models' => 'nudity-2.0,wad,offensive,gore', 'api_user' => $sightengine_user, 'api_secret' => $sightengine_secret, 'media' => $cfile]);
+    
+    $ai_result = json_decode(curl_exec($ch_ai), true);
+    curl_close($ch_ai);
 
-} catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System error loading profile.</div>");
+    $is_safe = true;
+    if (isset($ai_result['status']) && $ai_result['status'] === 'success') {
+        $weapon_score = $ai_result['weapon'] ?? ($ai_result['wad']['weapon'] ?? 0);
+        $safe_score = $ai_result['nudity']['safe'] ?? ($ai_result['nudity']['none'] ?? 1);
+        if ($weapon_score > 0.4 || $safe_score < 0.5) {
+            $error = "Profile picture rejected by AI Security. Please use an appropriate image.";
+            $is_safe = false;
+        }
+    } else {
+        $error = "AI Scan failed. Please try again.";
+        $is_safe = false;
+    }
+
+    // 2. Cloud Upload
+    if ($is_safe) {
+        $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
+        $image_base64 = base64_encode(file_get_contents($tmp_name));
+        
+        $ch_cloud = curl_init();
+        curl_setopt($ch_cloud, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
+        curl_setopt($ch_cloud, CURLOPT_POST, 1);
+        curl_setopt($ch_cloud, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
+        curl_setopt($ch_cloud, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch_cloud, CURLOPT_SSL_VERIFYPEER, false);
+        
+        $cloud_result = json_decode(curl_exec($ch_cloud), true);
+        curl_close($ch_cloud);
+        
+        if (isset($cloud_result['data']['url'])) {
+            $new_pic_url = $cloud_result['data']['url'];
+            $pdo->prepare("UPDATE users SET profile_picture = ? WHERE user_id = ?")->execute([$new_pic_url, $my_id]);
+            $success = "Profile picture updated successfully!";
+        } else {
+            $error = "Cloud upload failed.";
+        }
+    }
 }
+
+// ==========================================
+// 📊 FETCH USER DATA & STATS
+// ==========================================
+$stmt = $pdo->prepare("SELECT full_name, university_name, profile_picture FROM users WHERE user_id = ?");
+$stmt->execute([$my_id]);
+$user = $stmt->fetch();
+
+$followers_count = $pdo->prepare("SELECT COUNT(*) FROM follows WHERE followed_id = ?");
+$followers_count->execute([$my_id]);
+$f_count = $followers_count->fetchColumn();
+
+$following_count = $pdo->prepare("SELECT COUNT(*) FROM follows WHERE follower_id = ?");
+$following_count->execute([$my_id]);
+$fw_count = $following_count->fetchColumn();
+
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile | MILELE</title>
+    <title>My Dashboard | MILELE</title>
     <style>
-        body { background: #000; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 40px 20px; }
-        .container { max-width: 1000px; margin: 0 auto; }
+        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh;}
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px);}
+        .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none;}
+        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: bold;}
         
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .nav-bar h1 { color: #fff; margin: 0; font-size: 2rem; }
-        .nav-buttons { display: flex; gap: 15px; flex-wrap: wrap; justify-content: flex-end;}
-        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.9rem; }
-        .btn-glass:hover { background: rgba(255,255,255,0.1); }
-        .btn-accent { background: #2DD4BF; color: #000; border: none; font-weight: bold; }
-        .btn-accent:hover { background: #fff; }
-        .btn-danger { color: #F87171; border-color: rgba(248,113,113,0.3); }
-        .btn-danger:hover { background: rgba(248,113,113,0.1); }
-
-        .profile-card { background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); padding: 30px; border-radius: 24px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;}
-        .profile-info h2 { margin: 0 0 5px 0; color: #2DD4BF; }
-        .profile-info p { margin: 0; color: #888; font-size: 0.95rem; }
-        .stats-box { text-align: center; background: rgba(0,0,0,0.5); padding: 15px 30px; border-radius: 16px; border: 1px solid rgba(45,212,191,0.2); }
-        .stats-box h3 { margin: 0; font-size: 2rem; color: #fff; }
-        .stats-box span { font-size: 0.8rem; color: #2DD4BF; text-transform: uppercase; letter-spacing: 1px; }
-
-        .section-title { font-size: 1.2rem; color: #888; margin-bottom: 20px; text-transform: uppercase; letter-spacing: 1px; margin-top: 40px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+        .container { max-width: 800px; margin: 50px auto; padding: 0 20px; text-align: center; }
         
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
-        .item-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 20px; border-radius: 16px; transition: 0.3s; display: flex; flex-direction: column; }
-        .item-card:hover { border-color: rgba(45,212,191,0.3); transform: translateY(-3px); }
+        .avatar-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
+        .big-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #2DD4BF; background: #111; display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold; color: #2DD4BF;}
+        .edit-btn { position: absolute; bottom: 0; right: 0; background: #2DD4BF; color: #000; border: none; border-radius: 50%; width: 35px; height: 35px; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.5);}
         
-        .item-card img { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 12px; margin-bottom: 15px; background: rgba(255,255,255,0.05); }
-
-        .item-title { font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; }
-        .item-price { color: #2DD4BF; margin-bottom: 15px; }
+        .stats-row { display: flex; justify-content: center; gap: 40px; margin: 30px 0; background: rgba(255,255,255,0.03); padding: 20px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.05);}
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-value { font-size: 1.5rem; font-weight: bold; color: #fff;}
+        .stat-label { font-size: 0.85rem; color: #888; text-transform: uppercase; letter-spacing: 1px;}
         
-        .card-controls { display: flex; gap: 10px; margin-top: auto; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.05); }
-        .btn-edit { flex: 1; text-align: center; padding: 8px; background: rgba(45,212,191,0.1); color: #2DD4BF; border-radius: 8px; text-decoration: none; font-size: 0.85rem; transition: 0.2s; }
-        .btn-edit:hover { background: #2DD4BF; color: #000; }
-        .btn-delete { flex: 1; text-align: center; padding: 8px; background: rgba(248,113,113,0.1); color: #F87171; border-radius: 8px; border: none; cursor: pointer; font-size: 0.85rem; transition: 0.2s; font-family: inherit;}
-        .btn-delete:hover { background: #F87171; color: #000; }
-
-        .history-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; text-align: left; }
-        th { color: #666; padding-bottom: 15px; font-size: 0.85rem; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,0.1); }
-        td { padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.05); color: #ccc; }
-        .code-box { background: rgba(0,0,0,0.5); border: 1px solid rgba(45,212,191,0.3); padding: 5px 10px; border-radius: 6px; color: #2DD4BF; font-family: monospace; font-weight: bold; letter-spacing: 2px; }
+        .alert { padding: 15px; border-radius: 12px; margin-bottom: 20px; }
+        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
+        .alert-success { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); }
         
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 8px; font-size: 0.8rem; font-weight: bold;}
-        .status-funded { background: rgba(251, 191, 36, 0.1); color: #FBBF24; border: 1px solid rgba(251, 191, 36, 0.2); }
-        .status-released { background: rgba(45, 212, 191, 0.1); color: #2DD4BF; }
-        .status-disputed { background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid rgba(239, 68, 68, 0.4); animation: pulse 2s infinite; }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-        }
-
-        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 1000; opacity: 0; transition: opacity 0.3s ease; }
-        .modal-overlay.active { display: flex; opacity: 1; }
-        .modal-box { background: rgba(20,20,20,0.95); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 40px; max-width: 400px; text-align: center; box-shadow: 0 24px 48px rgba(0,0,0,0.5); transform: translateY(20px); transition: transform 0.3s ease; }
-        .modal-overlay.active .modal-box { transform: translateY(0); }
-        
-        .btn-modal-action { flex: 1; padding: 12px; border-radius: 12px; cursor: pointer; font-weight: bold; transition: 0.2s; border: none; font-size: 1rem; }
+        #picForm { display: none; margin-top: 20px; }
     </style>
 </head>
 <body>
 
+<nav class="nav-bar">
+    <a href="index.php" class="brand">MILELE</a>
+    <a href="login.php" class="btn-glass" onclick="<?php session_destroy(); ?>">Logout</a>
+</nav>
+
 <div class="container">
-    <div class="nav-bar">
-        <h1>My Profile</h1>
-        <div class="nav-buttons">
-            <a href="index.php" class="btn-glass btn-accent">← Return to Market</a>
-            <a href="payout.php" class="btn-glass" style="background: rgba(45,212,191,0.1); color: #2DD4BF; border-color: rgba(45,212,191,0.2);">My Sales</a>
-            
-            <?php if (isset($user['is_admin']) && $user['is_admin'] == 1): ?>
-                <a href="admin_dashboard.php" class="btn-glass" style="background: rgba(248, 113, 113, 0.1); color: #F87171; border-color: rgba(248, 113, 113, 0.3);">👑 Admin Panel</a>
-            <?php endif; ?>
+    <?php if($error) echo "<div class='alert alert-error'>$error</div>"; ?>
+    <?php if($success) echo "<div class='alert alert-success'>$success</div>"; ?>
 
-            <a href="logout.php" class="btn-glass btn-danger">Logout</a>
-        </div>
-    </div>
-
-    <div class="profile-card">
-        <div class="profile-info">
-            <h2><?php echo htmlspecialchars($user['full_name']); ?></h2>
-            <p><?php echo htmlspecialchars($user['email']); ?></p>
-            <p style="margin-top: 10px;">🎓 <?php echo htmlspecialchars($user['university_name']); ?></p>
-        </div>
-        <div class="stats-box">
-            <h3><?php echo (int)$user['completed_escrows']; ?></h3>
-            <span>Successful Deals</span>
-        </div>
-    </div>
-
-    <div class="section-title">Items I'm Selling</div>
-    
-    <?php if (empty($my_listings)): ?>
-        <p style="color: #666; text-align: center; padding: 20px; background: rgba(255,255,255,0.02); border-radius: 16px;">You haven't posted any items yet.</p>
-    <?php else: ?>
-        <div class="grid">
-            <?php foreach ($my_listings as $item): ?>
-                <div class="item-card">
-                    <?php $image_src = !empty($item['image_path']) ? htmlspecialchars($item['image_path']) : 'https://via.placeholder.com/400x400/111111/333333?text=MILELE'; ?>
-                    <img src="<?php echo $image_src; ?>" onerror="this.onerror=null; this.src='https://via.placeholder.com/400x400/111111/333333?text=No+Photo';">
-                    
-                    <div class="item-title"><?php echo htmlspecialchars($item['title']); ?></div>
-                    <div class="item-price">KES <?php echo number_format($item['price'], 2); ?></div>
-                    <div class="card-controls">
-                        <a href="edit_listing.php?id=<?php echo $item['listing_id']; ?>" class="btn-edit">Edit</a>
-                        <button onclick="openDeleteModal(<?php echo $item['listing_id']; ?>)" class="btn-delete">Remove</button>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
-    <?php endif; ?>
-
-    <div class="section-title" style="margin-top: 60px;">Items I've Bought</div>
-    
-    <div class="history-section">
-        <?php if (empty($purchase_history)): ?>
-            <p style="color: #666; text-align: center;">You haven't bought anything yet.</p>
+    <div class="avatar-wrapper">
+        <?php if($user['profile_picture']): ?>
+            <img src="<?php echo htmlspecialchars($user['profile_picture']); ?>" class="big-avatar" alt="Profile">
         <?php else: ?>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Item</th>
-                        <th>Seller</th>
-                        <th>Amount Paid</th>
-                        <th>Handover PIN</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($purchase_history as $deal): ?>
-                        <tr>
-                            <td><?php echo date('M d, Y', strtotime($deal['created_at'])); ?></td>
-                            <td style="color: #fff; font-weight: bold;"><?php echo htmlspecialchars($deal['title']); ?></td>
-                            <td><?php echo htmlspecialchars(explode(' ', $deal['seller_name'])[0]); ?></td>
-                            <td>KES <?php echo number_format($deal['total_amount'], 2); ?></td>
-                            <td>
-                                <?php if ($deal['transaction_status'] === 'funded' && !empty($deal['escrow_pin'])): ?>
-                                    <span class="code-box"><?php echo htmlspecialchars($deal['escrow_pin']); ?></span>
-                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
-                                    <span style="color: #EF4444; text-decoration: line-through;">FROZEN</span>
-                                <?php else: ?>
-                                    <span style="color: #666;">Cleared</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($deal['transaction_status'] === 'funded'): ?>
-                                    <span class="status-badge status-funded">Secured</span>
-                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
-                                    <span class="status-badge status-disputed">Disputed</span>
-                                <?php else: ?>
-                                    <span class="status-badge status-released">Completed</span>
-                                <?php endif; ?>
-                            </td>
-                            <td>
-                                <?php if ($deal['transaction_status'] === 'funded'): ?>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button onclick="openGuideModal()" style="background:none; border:1px solid rgba(255,255,255,0.2); color:#ccc; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">ℹ️ Guide</button>
-                                        
-                                        <button onclick="openDisputeModal(<?php echo $deal['transaction_id']; ?>)" style="background:rgba(248, 113, 113, 0.1); border:1px solid rgba(248, 113, 113, 0.3); color:#F87171; padding:6px 12px; border-radius:8px; cursor:pointer; font-size:0.8rem; transition:0.2s;">🚨 Report Issue</button>
-                                    </div>
-                                <?php elseif ($deal['transaction_status'] === 'disputed'): ?>
-                                    <span style="color: #666; font-size: 0.8rem;">Admin Reviewing</span>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+            <div class="big-avatar"><?php echo strtoupper(substr($user['full_name'], 0, 1)); ?></div>
         <?php endif; ?>
+        <button class="edit-btn" onclick="document.getElementById('picInput').click()">📷</button>
     </div>
-</div>
 
-<div class="modal-overlay" id="deleteModal">
-    <div class="modal-box">
-        <div style="font-size: 3rem; margin-bottom: 15px;">🗑️</div>
-        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #fff;">Remove Item?</div>
-        <div style="color: #888; margin-bottom: 30px; font-size: 0.95rem; line-height: 1.5;">This will hide your item from the global marketplace. Past receipts will be preserved.</div>
-        <div style="display: flex; gap: 15px;">
-            <button onclick="closeDeleteModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
-            <a href="#" id="confirmDeleteBtn" class="btn-modal-action" style="background: #F87171; color: #000; text-decoration: none; display: flex; align-items: center; justify-content: center;">Remove</a>
+    <h1><?php echo htmlspecialchars($user['full_name']); ?></h1>
+    <p style="color: #888;">🎓 <?php echo htmlspecialchars($user['university_name']); ?></p>
+
+    <div class="stats-row">
+        <div class="stat-item">
+            <span class="stat-value"><?php echo $f_count; ?></span>
+            <span class="stat-label">Followers</span>
+        </div>
+        <div class="stat-item">
+            <span class="stat-value"><?php echo $fw_count; ?></span>
+            <span class="stat-label">Following</span>
         </div>
     </div>
+
+    <form id="picForm" method="POST" enctype="multipart/form-data">
+        <input type="file" name="profile_pic" id="picInput" accept="image/*" onchange="document.getElementById('picForm').submit();" style="display:none;">
+    </form>
 </div>
-
-<div class="modal-overlay" id="guideModal">
-    <div class="modal-box" style="text-align: left;">
-        <div style="text-align: center; color: #2DD4BF; font-size: 1.5rem; margin-bottom: 10px;">How Handover Works</div>
-        <p style="color: #888; font-size: 0.9rem; text-align: center; margin-bottom: 20px;">Your money is safe. The seller cannot get paid until you provide your 4-digit PIN.</p>
-        <div style="margin-bottom: 15px;"><strong style="color: #fff;">1. Meet Up:</strong> <span style="color: #ccc; font-size: 0.9rem;">Coordinate a safe location using the Inbox.</span></div>
-        <div style="margin-bottom: 15px;"><strong style="color: #fff;">2. Inspect:</strong> <span style="color: #ccc; font-size: 0.9rem;">Check the item to make sure it matches exactly.</span></div>
-        <div style="margin-bottom: 25px;"><strong style="color: #fff;">3. Handover PIN:</strong> <span style="color: #ccc; font-size: 0.9rem;">Only give the seller your PIN when you have the item in your hands. This completes the sale.</span></div>
-        <button onclick="closeGuideModal()" class="btn-modal-action" style="width: 100%; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Understood</button>
-    </div>
-</div>
-
-<div class="modal-overlay" id="disputeModal">
-    <div class="modal-box" style="border: 1px solid rgba(239, 68, 68, 0.3);">
-        <div style="font-size: 3rem; margin-bottom: 15px;">🚨</div>
-        <div style="font-size: 1.5rem; margin-bottom: 10px; color: #F87171; font-weight: bold;">Emergency Freeze</div>
-        <p style="color: #888; font-size: 0.95rem; margin-bottom: 25px; line-height: 1.6; text-align: left;">
-            This action will instantly lock the funds in the vault and alert the Admin Team. 
-            <br><br>
-            <strong style="color: #fff;">Only proceed if:</strong><br>
-            • The seller failed to show up.<br>
-            • The item is broken, counterfeit, or incorrect.<br>
-            • You feel unsafe completing the transaction.
-        </p>
-        
-        <form action="dispute_transaction.php" method="POST" style="display: flex; gap: 15px; margin: 0;">
-            <input type="hidden" name="transaction_id" id="disputeTxId" value="">
-            
-            <button type="button" onclick="closeDisputeModal()" class="btn-modal-action" style="background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1);">Cancel</button>
-            <button type="submit" class="btn-modal-action" style="background: #F87171; color: #000;">Freeze Funds</button>
-        </form>
-    </div>
-</div>
-
-<script>
-    // Delete Modal Logic
-    const deleteModal = document.getElementById('deleteModal');
-    const confirmBtn = document.getElementById('confirmDeleteBtn');
-    function openDeleteModal(listingId) { confirmBtn.href = "delete_listing.php?id=" + listingId; deleteModal.classList.add('active'); }
-    function closeDeleteModal() { deleteModal.classList.remove('active'); setTimeout(() => confirmBtn.href = "#", 300); }
-    
-    // Guide Modal Logic
-    const guideModal = document.getElementById('guideModal');
-    function openGuideModal() { guideModal.classList.add('active'); }
-    function closeGuideModal() { guideModal.classList.remove('active'); }
-
-    // Premium Dispute Modal Logic
-    const disputeModal = document.getElementById('disputeModal');
-    const disputeTxInput = document.getElementById('disputeTxId');
-    function openDisputeModal(txId) { 
-        disputeTxInput.value = txId; // Inject the transaction ID into the form
-        disputeModal.classList.add('active'); 
-    }
-    function closeDisputeModal() { disputeModal.classList.remove('active'); }
-
-    // Close Modals on Background Click
-    window.addEventListener('click', function(e) {
-        if (e.target === deleteModal) closeDeleteModal();
-        if (e.target === guideModal) closeGuideModal();
-        if (e.target === disputeModal) closeDisputeModal();
-    });
-</script>
-
-<?php include 'footer.php'; ?>
 
 </body>
 </html>
