@@ -1,9 +1,8 @@
 <?php
-// MILELE - Bulletproof Dashboard & Escrow Simulator
+// MILELE - Private User Dashboard (Escrow Engine + Admin Restored)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
-// 🛑 SECURE LOGOUT ROUTER
 if (isset($_GET['action']) && $_GET['action'] === 'logout') {
     session_unset();
     session_destroy();
@@ -27,26 +26,12 @@ $success = '';
 try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE listings ADD COLUMN buyer_id INT DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE listings ADD COLUMN escrow_pin VARCHAR(10) DEFAULT NULL"); } catch (PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN is_admin TINYINT(1) DEFAULT 0"); } catch (PDOException $e) {} // Ensure admin column exists
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS follows (
         follower_id INT NOT NULL, followed_id INT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (follower_id, followed_id)
     )");
 } catch (PDOException $e) {}
-
-// ==========================================
-// 🧪 DEVELOPER ESCROW SIMULATOR 
-// ==========================================
-if (isset($_GET['simulate']) && $_GET['simulate'] === 'true') {
-    try {
-        $fake_pin = rand(1000, 9999);
-        // Create a fake active item owned by user 1 (or any user), bought by YOU
-        $stmt = $pdo->prepare("INSERT INTO listings (seller_id, buyer_id, title, description, price, category, listing_status, escrow_pin, image_path) VALUES (1, ?, 'Simulated MacBook Pro', 'Testing the escrow engine', 75000, 'Electronics', 'escrow', ?, '[]')");
-        $stmt->execute([$my_id, $fake_pin]);
-        $success = "🧪 SIMULATION SUCCESS: A fake purchase has been added to your vault!";
-    } catch (PDOException $e) {
-        $error = "Simulation failed: " . $e->getMessage();
-    }
-}
 
 // ==========================================
 // 🔐 ESCROW RELEASE LOGIC
@@ -71,14 +56,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // ==========================================
-// 📊 QUARANTINED DATA FETCHING (BULLETPROOF)
+// 📊 FETCH DASHBOARD DATA
 // ==========================================
-// 1. Profile Data
+// 1. Profile Data (Admin check added)
 try {
-    $stmt = $pdo->prepare("SELECT full_name, university_name, profile_picture, completed_escrows, account_state FROM users WHERE user_id = ?");
+    $stmt = $pdo->prepare("SELECT full_name, university_name, profile_picture, completed_escrows, account_state, is_admin FROM users WHERE user_id = ?");
     $stmt->execute([$my_id]);
     $user = $stmt->fetch();
-} catch (PDOException $e) { $error .= "<br>User Data Error: " . $e->getMessage(); }
+    
+    // Determine if user has admin privileges
+    $is_admin_user = (!empty($user['is_admin']) || $user['account_state'] === 'admin');
+
+} catch (PDOException $e) { $error .= "User Data Error: " . $e->getMessage(); }
 
 // 2. Follower Data
 $followers = 0; $following = 0;
@@ -90,7 +79,7 @@ try {
     $fw_count = $pdo->prepare("SELECT COUNT(*) FROM follows WHERE follower_id = ?");
     $fw_count->execute([$my_id]);
     $following = $fw_count->fetchColumn();
-} catch (PDOException $e) { $error .= "<br>Follower Data Error: " . $e->getMessage(); }
+} catch (PDOException $e) { }
 
 // 3. Active Inventory
 $active_listings = [];
@@ -98,23 +87,23 @@ try {
     $stmt_active = $pdo->prepare("SELECT * FROM listings WHERE seller_id = ? AND listing_status = 'active' ORDER BY created_at DESC");
     $stmt_active->execute([$my_id]);
     $active_listings = $stmt_active->fetchAll();
-} catch (PDOException $e) { $error .= "<br>Active Inventory Error: " . $e->getMessage(); }
+} catch (PDOException $e) { }
 
-// 4. Pending Sales (Seller view)
+// 4. Pending Sales
 $pending_sales = [];
 try {
     $stmt_sales = $pdo->prepare("SELECT l.*, u.full_name as buyer_name FROM listings l LEFT JOIN users u ON l.buyer_id = u.user_id WHERE l.seller_id = ? AND l.listing_status = 'escrow' ORDER BY l.created_at DESC");
     $stmt_sales->execute([$my_id]);
     $pending_sales = $stmt_sales->fetchAll();
-} catch (PDOException $e) { $error .= "<br>Pending Sales Error: " . $e->getMessage(); }
+} catch (PDOException $e) { }
 
-// 5. My Purchases (Buyer view)
+// 5. My Purchases
 $my_purchases = [];
 try {
     $stmt_purchases = $pdo->prepare("SELECT l.*, u.full_name as seller_name FROM listings l LEFT JOIN users u ON l.seller_id = u.user_id WHERE l.buyer_id = ? ORDER BY l.created_at DESC");
     $stmt_purchases->execute([$my_id]);
     $my_purchases = $stmt_purchases->fetchAll();
-} catch (PDOException $e) { $error .= "<br>Purchases Error: " . $e->getMessage(); }
+} catch (PDOException $e) { }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -131,6 +120,10 @@ try {
         .btn-glass:hover { background: rgba(255,255,255,0.1); }
         .btn-red { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3);}
         .btn-red:hover { background: #EF4444; color: #000; }
+        
+        /* Admin Button Styling */
+        .btn-admin { background: #8B5CF6; color: #fff; border: 1px solid #A78BFA; padding: 10px 20px; border-radius: 12px; font-weight: bold; text-decoration: none; transition: 0.3s;}
+        .btn-admin:hover { background: #A78BFA; color: #000;}
 
         .profile-hero { padding: 60px 20px 40px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
         .avatar-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
@@ -186,8 +179,6 @@ try {
         .btn-icon:hover { background: #2DD4BF; color: #000;}
 
         .empty-state { text-align: center; padding: 40px; color: #666; background: rgba(255,255,255,0.02); border-radius: 20px; border: 1px dashed rgba(255,255,255,0.1);}
-        .sim-btn { background: #8B5CF6; color: #fff; border: none; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; text-decoration: none; margin-left: 15px;}
-        .sim-btn:hover { background: #A78BFA; }
     </style>
 </head>
 <body>
@@ -195,6 +186,10 @@ try {
 <nav class="nav-bar">
     <a href="index.php" class="brand">MILELE</a>
     <div class="nav-actions">
+        <?php if($is_admin_user): ?>
+            <a href="admin.php" class="btn-admin">⚙️ Admin Panel</a>
+        <?php endif; ?>
+        
         <a href="index.php" class="btn-glass">← Market Feed</a>
         <a href="profile.php?action=logout" class="btn-glass btn-red">Logout</a>
     </div>
@@ -239,17 +234,13 @@ try {
 <main class="dashboard-container">
     
     <div class="section-header">
-        <h2 class="section-title">
-            🛍️ My Purchases 
-            <a href="profile.php?simulate=true" class="sim-btn" title="Creates a fake purchase so you can test the PIN UI">🧪 Simulate Purchase</a>
-        </h2>
+        <h2 class="section-title">🛍️ My Purchases</h2>
     </div>
     
     <?php if (empty($my_purchases)): ?>
         <div class="empty-state">
             <div style="font-size: 2rem; margin-bottom: 10px;">🛒</div>
-            You haven't bought anything yet.<br>
-            <span style="font-size: 0.8rem; color: #444;">(Note: Because we haven't built checkout.php yet, you can use the Simulate button above to see this UI).</span>
+            You haven't bought anything yet.
         </div>
     <?php else: ?>
         <div class="grid">
@@ -262,7 +253,6 @@ try {
                         <?php echo $is_sold ? 'Complete' : 'Pending Delivery'; ?>
                     </div>
                     <img src="<?php echo htmlspecialchars($img); ?>" class="card-img" alt="Item">
-                    
                     <div class="card-body">
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
                         <div class="entity-label">Seller: <span class="entity-name"><?php echo htmlspecialchars($item['seller_name'] ?? 'System User'); ?></span></div>
@@ -297,7 +287,6 @@ try {
                 <div class="card">
                     <div class="status-badge status-escrow">Locked in Escrow</div>
                     <img src="<?php echo htmlspecialchars($img); ?>" class="card-img" alt="Item">
-                    
                     <div class="card-body">
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
                         <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
@@ -341,7 +330,6 @@ try {
             <?php endforeach; ?>
         </div>
     <?php endif; ?>
-
 </main>
 
 <script>
@@ -355,6 +343,5 @@ try {
         }
     }
 </script>
-
 </body>
 </html>
