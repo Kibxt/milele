@@ -1,11 +1,17 @@
 <?php
-// MILELE - Premium Global Feed (With Profile Pictures)
+// MILELE - Premium Global Feed (With Profile Pictures & Auto-Patch)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
 
 $search = filter_input(INPUT_GET, 'search', FILTER_SANITIZE_SPECIAL_CHARS);
 $category = filter_input(INPUT_GET, 'category', FILTER_SANITIZE_SPECIAL_CHARS);
+
+// ==========================================
+// 🛠️ SILENT DATABASE UPGRADE
+// ==========================================
+// If the user visits the feed before their profile, this ensures the column exists!
+try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
 
 // 🔔 UNREAD MESSAGE TRACKER
 $unread_count = 0;
@@ -20,10 +26,9 @@ if (isset($_SESSION['user_id'])) {
 }
 
 // ==========================================
-// 🛒 LOAD FEED ITEMS (Now fetching Profile Pics)
+// 🛒 LOAD FEED ITEMS 
 // ==========================================
 try {
-    // UPGRADED SQL: Pulls full_name and profile_picture from the users table
     $sql = "SELECT l.*, u.university_name, u.full_name, u.profile_picture FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.listing_status = 'active'";
     $params = [];
 
@@ -44,7 +49,8 @@ try {
     $items = $stmt->fetchAll();
 
 } catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System Error Loading Feed.</div>");
+    // UNMASKED ERROR: If it fails again, it will tell us exactly why.
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>System Error Loading Feed:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
 }
 ?>
 <!DOCTYPE html>
@@ -112,7 +118,6 @@ try {
         
         .card-footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 15px;}
         
-        /* New Seller Info Styling */
         .seller-info { display: flex; align-items: center; gap: 10px;}
         .seller-avatar { width: 35px; height: 35px; border-radius: 50%; object-fit: cover; border: 1px solid rgba(45,212,191,0.5); background: #111; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; font-weight: bold; color: #2DD4BF;}
         .seller-details { display: flex; flex-direction: column; line-height: 1.2;}
