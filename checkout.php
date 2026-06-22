@@ -1,5 +1,5 @@
 <?php
-// MILELE - Real Daraja API M-Pesa Checkout (Fully Authenticated)
+// MILELE - Real-Time Daraja API M-Pesa Checkout
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -12,10 +12,26 @@ require 'db.php';
 $my_id = $_SESSION['user_id'];
 $item_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 $error = '';
-$success_message = '';
+$stk_pushed = false;
 
 if (!$item_id) {
     die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>Invalid Item ID.</div>");
+}
+
+// ==========================================
+// 📡 REAL-TIME AJAX LISTENER (Silently checks DB)
+// ==========================================
+if (isset($_GET['action']) && $_GET['action'] === 'check_status') {
+    header('Content-Type: application/json');
+    try {
+        $stmt = $pdo->prepare("SELECT listing_status FROM listings WHERE listing_id = ?");
+        $stmt->execute([$item_id]);
+        $status = $stmt->fetchColumn();
+        echo json_encode(['status' => $status]);
+    } catch (Exception $e) {
+        echo json_encode(['status' => 'error']);
+    }
+    exit();
 }
 
 // ==========================================
@@ -52,18 +68,16 @@ $thumbnail = (is_array($images) && count($images) > 0) ? $images[0] : $item['ima
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'pay') {
     $phone = trim(filter_input(INPUT_POST, 'phone_number', FILTER_SANITIZE_SPECIAL_CHARS));
     
-    // Format phone from 07XX to 2547XX
     if (preg_match('/^(?:254|\+254|0)?(7[0-9]{8}|1[0-9]{8})$/', $phone, $matches)) {
         $formatted_phone = '254' . $matches[1];
         
         // --- YOUR EXPLICIT DARAJA CREDENTIALS ---
         $consumerKey = 'LA33OtNfdXyPyrTozI5KGULDecju2sAyNYMGdp85mTuRX9UA'; 
         $consumerSecret = 'MjthfBtuHJS2ezFAdMuGW87qaJd5MLn2fDRLiSnc2EVY4czOuJA1aZD3oyKmiGno'; 
-        $passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'; // Standard Safaricom Sandbox Passkey
+        $passkey = 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919'; 
         $BusinessShortCode = '174379'; 
         // ----------------------------------------
 
-        // 1. Get Access Token
         $headers = ['Content-Type:application/json; charset=utf8'];
         $url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
         $ch = curl_init($url);
@@ -78,12 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         if ($status == 200 && isset($result->access_token)) {
             $access_token = $result->access_token;
             
-            // 2. Prepare STK Push Payload
             $stk_url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest';
             $Timestamp = date('YmdHis');
             $Password = base64_encode($BusinessShortCode.$passkey.$Timestamp);
-            
-            // Webhook linking back to your Heroku app
             $callback_url = 'https://milele-campus-live-56fbf7c046b3.herokuapp.com/mpesa_callback.php?item=' . $item_id . '&buyer=' . $my_id;
 
             $curl_post_data = array(
@@ -91,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'Password' => $Password,
                 'Timestamp' => $Timestamp,
                 'TransactionType' => 'CustomerPayBillOnline',
-                'Amount' => 1, // Kept at 1 for Sandbox limits
+                'Amount' => 1, 
                 'PartyA' => $formatted_phone,
                 'PartyB' => $BusinessShortCode,
                 'PhoneNumber' => $formatted_phone,
@@ -100,7 +111,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 'TransactionDesc' => 'Escrow Item: ' . $item_id
             );
 
-            // 3. Fire STK Push
             $ch_stk = curl_init($stk_url);
             curl_setopt($ch_stk, CURLOPT_HTTPHEADER, array('Content-Type:application/json','Authorization:Bearer '.$access_token));
             curl_setopt($ch_stk, CURLOPT_POST, 1);
@@ -110,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             curl_close($ch_stk);
 
             if (isset($stk_response->ResponseCode) && $stk_response->ResponseCode == "0") {
-                $success_message = "STK Push sent! Please check your phone and enter your M-Pesa PIN. Once paid, check your dashboard.";
+                $stk_pushed = true; // Tell the frontend to switch to "Waiting" mode
             } else {
                 $error = "M-Pesa STK Push failed. Please check your phone number and try again.";
             }
@@ -151,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         .receipt-total { display: flex; justify-content: space-between; padding-top: 15px; font-size: 1.4rem; font-weight: bold; color: #2DD4BF;}
         .receipt-total span:last-child { font-family: monospace; font-size: 1.6rem; }
 
-        .payment-card { background: #0a0a0a; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); position: relative; overflow: hidden;}
+        .payment-card { background: #0a0a0a; border: 1px solid rgba(255,255,255,0.08); border-radius: 24px; padding: 40px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); position: relative; overflow: hidden; display: flex; flex-direction: column; justify-content: center;}
         .payment-card::before { content: ''; position: absolute; top: 0; right: 0; width: 150px; height: 150px; background: rgba(37,211,102,0.15); filter: blur(60px); pointer-events: none;}
 
         .mpesa-header { display: flex; flex-direction: column; gap: 15px; margin-bottom: 35px;}
@@ -164,10 +174,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
         .btn-pay { width: 100%; padding: 22px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-size: 1.3rem; font-weight: bold; cursor: pointer; transition: 0.3s;}
         .btn-pay:hover:not(:disabled) { background: #fff; transform: translateY(-3px);}
-        .btn-dashboard { width: 100%; padding: 22px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; border-radius: 16px; font-size: 1.1rem; font-weight: bold; cursor: pointer; text-decoration: none; display: block; text-align: center; margin-top: 15px;}
 
         .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); padding: 15px; border-radius: 12px; margin-bottom: 25px; font-weight: bold; text-align: center;}
-        .alert-success { background: rgba(37,211,102,0.1); color: #25D366; border: 1px solid rgba(37,211,102,0.3); padding: 25px; border-radius: 12px; margin-bottom: 25px; font-weight: bold; text-align: center; line-height: 1.5;}
+
+        /* Real-Time Status Screens */
+        .status-screen { text-align: center; display: none; padding: 20px 0;}
+        .spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #25D366; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; margin: 0 auto 20px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .check-icon { font-size: 4rem; color: #25D366; margin-bottom: 15px; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);}
+        @keyframes popIn { 0% { transform: scale(0); } 100% { transform: scale(1); } }
 
         @media (max-width: 768px) {
             .checkout-container { grid-template-columns: 1fr; }
@@ -206,30 +222,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     <div class="payment-card">
         <?php if($error): ?><div class="alert-error"><?php echo $error; ?></div><?php endif; ?>
 
-        <?php if($success_message): ?>
-            <div class="alert-success">
-                <div style="font-size: 3rem; margin-bottom: 10px;">📱</div>
-                <?php echo $success_message; ?>
-            </div>
-            <a href="profile.php" class="btn-dashboard">Go to Dashboard</a>
-        
-        <?php elseif(!$error || strpos($error, 'valid') !== false): ?>
-            <div class="mpesa-header">
-                <div><span class="mpesa-logo">M-PESA</span></div>
-                <div class="mpesa-desc">Enter your phone number. An STK push prompt will appear on your phone to securely authorize the payment.</div>
-            </div>
-
-            <form method="POST" id="checkoutForm" onsubmit="document.getElementById('payBtn').innerHTML='Sending Request...'; document.getElementById('payBtn').style.opacity='0.5';">
-                <input type="hidden" name="action" value="pay">
-                <div class="input-group">
-                    <label class="input-label">M-Pesa Phone Number</label>
-                    <input type="tel" name="phone_number" class="input-field" placeholder="07XX XXX XXX" required autocomplete="off">
+        <div id="formState" style="<?php echo $stk_pushed ? 'display:none;' : 'display:block;'; ?>">
+            <?php if(!$error || strpos($error, 'valid') !== false): ?>
+                <div class="mpesa-header">
+                    <div><span class="mpesa-logo">M-PESA</span></div>
+                    <div class="mpesa-desc" style="margin-top: 10px;">Enter your phone number. A prompt will appear on your phone to securely authorize the payment.</div>
                 </div>
-                <button type="submit" class="btn-pay" id="payBtn">Pay KES <?php echo number_format($total_price, 2); ?></button>
-            </form>
-        <?php endif; ?>
+
+                <form method="POST">
+                    <input type="hidden" name="action" value="pay">
+                    <div class="input-group">
+                        <label class="input-label">M-Pesa Phone Number</label>
+                        <input type="tel" name="phone_number" class="input-field" placeholder="07XX XXX XXX" required autocomplete="off">
+                    </div>
+                    <button type="submit" class="btn-pay" onclick="this.innerHTML='Initiating...'; this.style.opacity='0.8';">Pay KES <?php echo number_format($total_price, 2); ?></button>
+                </form>
+            <?php endif; ?>
+        </div>
+
+        <div id="waitingState" class="status-screen" style="<?php echo $stk_pushed ? 'display:block;' : ''; ?>">
+            <div class="spinner"></div>
+            <h2 style="color: #25D366; margin-bottom: 10px;">Check Your Phone</h2>
+            <p style="color: #888; font-size: 1.1rem; line-height: 1.5;">Please enter your M-Pesa PIN on your mobile device to complete the transaction.</p>
+            <p style="color: #666; font-size: 0.9rem; margin-top: 20px;">Waiting for confirmation...</p>
+        </div>
+
+        <div id="successState" class="status-screen">
+            <div class="check-icon">✓</div>
+            <h2 style="color: #fff; margin-bottom: 10px;">Payment Successful!</h2>
+            <p style="color: #aaa; font-size: 1.1rem;">Funds are securely locked in Escrow.</p>
+            <p style="color: #2DD4BF; font-weight: bold; margin-top: 20px;">Redirecting to your vault...</p>
+        </div>
     </div>
 
 </div>
+
+<?php if($stk_pushed): ?>
+<script>
+    // The Real-Time Polling Engine
+    const checkInterval = setInterval(() => {
+        fetch('checkout.php?action=check_status&id=<?php echo $item_id; ?>')
+        .then(response => response.json())
+        .then(data => {
+            // Once mpesa_callback.php updates the database to 'escrow', this triggers
+            if(data.status === 'escrow') {
+                clearInterval(checkInterval);
+                
+                // Swap the UI instantly
+                document.getElementById('waitingState').style.display = 'none';
+                document.getElementById('successState').style.display = 'block';
+                
+                // Redirect to dashboard vault after 2.5 seconds to let them read the success message
+                setTimeout(() => { 
+                    window.location.href = 'profile.php'; 
+                }, 2500);
+            }
+        })
+        .catch(error => console.error("Polling error:", error));
+    }, 3000); // Checks the database every 3 seconds
+</script>
+<?php endif; ?>
+
 </body>
 </html>
