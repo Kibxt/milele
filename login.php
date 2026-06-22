@@ -1,66 +1,40 @@
 <?php
-// MILELE - Login Gateway (With Auto-Patching & Ban Enforcement)
+// MILELE - Secure Login Engine
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
-
-if (isset($_SESSION['user_id'])) {
-    header("Location: index.php");
-    exit();
-}
-
 require 'db.php';
-
-// ==========================================
-// 🛠️ SILENT DATABASE UPGRADES
-// ==========================================
-try { $pdo->exec("ALTER TABLE users ADD COLUMN banned_until DATETIME DEFAULT NULL"); } catch (PDOException $e) {}
-try { $pdo->exec("ALTER TABLE users ADD COLUMN strike_count INT DEFAULT 0"); } catch (PDOException $e) {}
 
 $error = '';
 
-if (isset($_SESSION['login_error'])) {
-    $error = $_SESSION['login_error'];
-    unset($_SESSION['login_error']);
-}
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $email = trim($_POST['email']);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $email = strtolower(trim(filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL)));
     $password = $_POST['password'];
 
-    if (!empty($email) && !empty($password)) {
-        try {
-            // PATCHED: Now requesting 'password_hash' to match your database exactly
-            $stmt = $pdo->prepare("SELECT user_id, password_hash, banned_until FROM users WHERE email = :email");
-            $stmt->execute([':email' => $email]);
-            $user = $stmt->fetch();
+    try {
+        $stmt = $pdo->prepare("SELECT user_id, password_hash, account_state, is_verified FROM users WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
 
-            // PATCHED: Verifying against 'password_hash'
-            if ($user && password_verify($password, $user['password_hash'])) {
-                
-                // ==========================================
-                // 🛑 THE BAN WALL
-                // ==========================================
-                if (!empty($user['banned_until']) && strtotime($user['banned_until']) > time()) {
-                    $ban_end_date = date("F j, Y, g:i A", strtotime($user['banned_until']));
-                    $error = "🚨 <strong>ACCOUNT SUSPENDED</strong><br>Your account has been banned for repeatedly violating our security rules. This ban will automatically lift on:<br><span style='color:#fff;'>$ban_end_date</span>";
-                } else {
-                    // THE FORGIVENESS PROTOCOL
-                    if (!empty($user['banned_until'])) {
-                        $pdo->prepare("UPDATE users SET banned_until = NULL, strike_count = 0 WHERE user_id = ?")->execute([$user['user_id']]);
-                    }
-                    
-                    $_SESSION['user_id'] = $user['user_id'];
-                    header("Location: index.php");
-                    exit();
-                }
+        if ($user && password_verify($password, $user['password_hash'])) {
+            if ($user['account_state'] === 'frozen') {
+                $error = "This account has been frozen by administration.";
+            } elseif ($user['is_verified'] == 0) {
+                $_SESSION['pending_email'] = $email;
+                header("Location: verify_email.php");
+                exit();
             } else {
-                $error = "Invalid email or password.";
+                $_SESSION['user_id'] = $user['user_id'];
+                
+                // Redirect logic
+                $redirect = isset($_GET['redirect']) ? $_GET['redirect'] : 'index.php';
+                header("Location: " . htmlspecialchars($redirect));
+                exit();
             }
-        } catch (PDOException $e) {
-            $error = "System Error: " . htmlspecialchars($e->getMessage());
+        } else {
+            $error = "Invalid email or password.";
         }
-    } else {
-        $error = "Please fill in both fields.";
+    } catch (PDOException $e) {
+        $error = "System Error: " . htmlspecialchars($e->getMessage());
     }
 }
 ?>
@@ -71,49 +45,62 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login | MILELE</title>
     <style>
-        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; background-image: radial-gradient(circle at 50% -20%, rgba(45, 212, 191, 0.15), transparent 60%); }
-        .login-card { background: rgba(255, 255, 255, 0.02); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); padding: 50px 40px; border-radius: 32px; width: 100%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.5); text-align: center; }
-        .brand { font-size: 2.5rem; font-weight: 900; color: #2DD4BF; margin: 0 0 10px 0; letter-spacing: -1px; }
-        .subtitle { color: #888; font-size: 0.95rem; margin-bottom: 40px; }
-        .input-group { margin-bottom: 20px; text-align: left; }
-        .input-group label { display: block; font-size: 0.85rem; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-        .input-wrapper { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; padding: 15px; transition: 0.3s; }
-        .input-wrapper:focus-within { border-color: #2DD4BF; background: rgba(255, 255, 255, 0.08); }
-        .input-wrapper input { width: 100%; background: transparent; border: none; color: #fff; font-size: 1rem; outline: none; font-family: inherit; }
-        .btn-submit { width: 100%; padding: 18px; background: #2DD4BF; color: #000; border: none; border-radius: 16px; font-weight: bold; font-size: 1.1rem; cursor: pointer; margin-top: 10px; transition: 0.2s; }
-        .btn-submit:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(45, 212, 191, 0.2); }
-        .bottom-link { display: block; margin-top: 25px; color: #888; text-decoration: none; font-size: 0.9rem; transition: 0.2s; }
-        .bottom-link:hover { color: #2DD4BF; }
-        .error-box { background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.3); color: #F87171; padding: 15px; border-radius: 12px; margin-bottom: 25px; font-size: 0.9rem; line-height: 1.5; }
+        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;}
+        
+        .auth-card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.08); padding: 40px; border-radius: 24px; width: 100%; max-width: 450px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); position: relative; overflow: hidden;}
+        .auth-card::before { content: ''; position: absolute; top: -50px; right: -50px; width: 150px; height: 150px; background: rgba(45,212,191,0.1); filter: blur(50px); pointer-events: none;}
+        
+        .brand { font-size: 2.2rem; font-weight: 900; color: #2DD4BF; text-align: center; margin-bottom: 5px; letter-spacing: -1px;}
+        .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 0.95rem;}
+        
+        .input-group { margin-bottom: 20px;}
+        .input-field { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); padding: 16px 20px; border-radius: 12px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box; transition: 0.3s;}
+        .input-field:focus { border-color: #2DD4BF; background: rgba(45,212,191,0.02);}
+        
+        .btn-primary { width: 100%; padding: 18px; background: #2DD4BF; color: #000; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.3s; margin-top: 10px;}
+        .btn-primary:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(45,212,191,0.2);}
+        
+        .divider { display: flex; align-items: center; text-align: center; color: #666; margin: 25px 0; font-size: 0.85rem; font-weight: bold;}
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .divider:not(:empty)::before { margin-right: 1em; }
+        .divider:not(:empty)::after { margin-left: 1em; }
+
+        .btn-social { width: 100%; padding: 16px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 15px; transition: 0.2s;}
+        .btn-social:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);}
+        
+        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); padding: 15px; border-radius: 12px; margin-bottom: 25px; font-size: 0.95rem; text-align: center; font-weight: bold;}
+        .footer-text { text-align: center; margin-top: 25px; color: #888; font-size: 0.95rem;}
+        .footer-text a { color: #2DD4BF; text-decoration: none; font-weight: bold; transition: 0.2s;}
+        .footer-text a:hover { color: #fff;}
     </style>
 </head>
 <body>
 
-<div class="login-card">
+<div class="auth-card">
     <div class="brand">MILELE</div>
-    <div class="subtitle">Secure Escrow Gateway</div>
+    <div class="subtitle">Welcome back.</div>
 
-    <?php if ($error) echo "<div class='error-box'>$error</div>"; ?>
+    <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
 
-    <form method="POST" action="login.php">
+    <a href="#" class="btn-social" onclick="alert('Google OAuth setup required in backend.'); return false;" style="text-decoration:none;">
+        <span style="font-size: 1.2rem;">G</span> Sign in with Google
+    </a>
+
+    <div class="divider">OR</div>
+
+    <form method="POST">
         <div class="input-group">
-            <label>Student Email</label>
-            <div class="input-wrapper">
-                <input type="email" name="email" required autocomplete="email">
-            </div>
+            <input type="email" name="email" class="input-field" placeholder="University Email" required>
         </div>
-
         <div class="input-group">
-            <label>Password</label>
-            <div class="input-wrapper">
-                <input type="password" name="password" required autocomplete="current-password">
-            </div>
+            <input type="password" name="password" class="input-field" placeholder="Password" required>
         </div>
-
-        <button type="submit" class="btn-submit">Sign In</button>
+        <button type="submit" class="btn-primary">Log In</button>
     </form>
 
-    <a href="register.php" class="bottom-link">Don't have an account? <strong>Register</strong></a>
+    <div class="footer-text">
+        Don't have an account? <a href="register.php">Sign Up</a>
+    </div>
 </div>
 
 </body>

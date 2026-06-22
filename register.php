@@ -1,10 +1,52 @@
 <?php
-// MILELE - Premium Registration Interface
-if (session_status() === PHP_SESSION_NONE) { session_start(); }
+// MILELE - Premium Registration & OTP Engine
 
-if (isset($_SESSION['user_id'])) {
-    header("Location: index.php");
-    exit();
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require 'db.php';
+
+// 🛠️ SILENT DATABASE SECURITY UPGRADES
+try { $pdo->exec("ALTER TABLE users ADD COLUMN is_verified TINYINT(1) DEFAULT 0"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN otp_code VARCHAR(6) DEFAULT NULL"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_uid VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $full_name = trim(filter_input(INPUT_POST, 'full_name', FILTER_SANITIZE_SPECIAL_CHARS));
+    $email = strtolower(trim(filter_input(INPUT_POST, 'email', FILTER_SANITIZE_EMAIL)));
+    $university = trim(filter_input(INPUT_POST, 'university', FILTER_SANITIZE_SPECIAL_CHARS));
+    $password = $_POST['password'];
+
+    if (!strpos($email, '.edu') && !strpos($email, '.ac.ke')) {
+        $error = "You must use a valid university email address (.edu or .ac.ke) to join MILELE.";
+    } else {
+        try {
+            $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                $error = "An account with this email already exists.";
+            } else {
+                $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
+                
+                $insert = $pdo->prepare("INSERT INTO users (full_name, email, university_name, password_hash, is_verified, otp_code) VALUES (?, ?, ?, ?, 0, ?)");
+                $insert->execute([$full_name, $email, $university, $hashed_password, $otp]);
+                
+                // Mail sending (Requires SMTP configuration on your server)
+                $subject = "Your MILELE Verification Code";
+                $message = "Hello $full_name,\n\nWelcome to MILELE! Your verification code is: $otp\n\nDo not share this code with anyone.";
+                $headers = "From: security@milele.com\r\n";
+                @mail($email, $subject, $message, $headers); // @ suppresses errors if mail server isn't set up yet
+
+                $_SESSION['pending_email'] = $email;
+                header("Location: verify_email.php");
+                exit();
+            }
+        } catch (PDOException $e) {
+            $error = "System Error: " . htmlspecialchars($e->getMessage());
+        }
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -12,77 +54,76 @@ if (isset($_SESSION['user_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Create Account | MILELE</title>
+    <title>Join MILELE | Secure Campus Marketplace</title>
     <style>
-        :root { --accent: #2DD4BF; --bg: #000; --glass: rgba(255,255,255,0.03); --border: rgba(255,255,255,0.08); }
-        body { background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; min-height: 100vh; margin: 0; display: flex; justify-content: center; align-items: center; background-image: radial-gradient(circle at 85% 50%, rgba(45, 212, 191, 0.08), transparent 25%), radial-gradient(circle at 15% 30%, rgba(255, 255, 255, 0.03), transparent 25%); }
+        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;}
         
-        .auth-container { background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--border); padding: 40px; border-radius: 32px; width: 100%; max-width: 450px; box-shadow: 0 24px 48px rgba(0,0,0,0.4); text-align: center; margin: 40px 20px; }
+        .auth-card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.08); padding: 40px; border-radius: 24px; width: 100%; max-width: 450px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); position: relative; overflow: hidden;}
+        .auth-card::before { content: ''; position: absolute; top: -50px; left: -50px; width: 150px; height: 150px; background: rgba(45,212,191,0.1); filter: blur(50px); pointer-events: none;}
         
-        .logo { font-size: 2rem; font-weight: 800; letter-spacing: 2px; margin-bottom: 10px; color: #fff; }
-        .logo span { color: var(--accent); }
-        .subtitle { color: #888; font-size: 0.9rem; margin-bottom: 30px; }
+        .brand { font-size: 2.2rem; font-weight: 900; color: #2DD4BF; text-align: center; margin-bottom: 5px; letter-spacing: -1px;}
+        .subtitle { text-align: center; color: #888; margin-bottom: 30px; font-size: 0.95rem;}
         
-        .error-msg { background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); color: #F87171; padding: 12px; border-radius: 12px; margin-bottom: 20px; font-size: 0.9rem; }
+        .input-group { margin-bottom: 20px;}
+        .input-field { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); padding: 16px 20px; border-radius: 12px; color: #fff; font-size: 1rem; outline: none; box-sizing: border-box; transition: 0.3s;}
+        .input-field:focus { border-color: #2DD4BF; background: rgba(45,212,191,0.02);}
         
-        .grid-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .btn-primary { width: 100%; padding: 18px; background: #2DD4BF; color: #000; border: none; border-radius: 12px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.3s; margin-top: 10px;}
+        .btn-primary:hover { background: #fff; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(45,212,191,0.2);}
         
-        .input-group { margin-bottom: 20px; text-align: left; }
-        .input-group label { display: block; color: #888; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-        .input-group input { width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border); color: #fff; padding: 14px 16px; border-radius: 16px; font-size: 1rem; transition: 0.3s; outline: none; box-sizing: border-box; }
-        .input-group input:focus { border-color: var(--accent); background: rgba(255,255,255,0.08); box-shadow: 0 0 0 4px rgba(45,212,191,0.1); }
+        .divider { display: flex; align-items: center; text-align: center; color: #666; margin: 25px 0; font-size: 0.85rem; font-weight: bold;}
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .divider:not(:empty)::before { margin-right: 1em; }
+        .divider:not(:empty)::after { margin-left: 1em; }
+
+        .btn-social { width: 100%; padding: 16px; background: rgba(255,255,255,0.03); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: bold; font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 15px; transition: 0.2s;}
+        .btn-social:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2);}
         
-        .btn-primary { width: 100%; background: #fff; color: #000; border: none; padding: 16px; border-radius: 16px; font-weight: bold; font-size: 1.05rem; cursor: pointer; transition: 0.2s; margin-top: 10px; }
-        .btn-primary:hover { background: var(--accent); transform: translateY(-2px); }
-        
-        .switch-link { display: block; margin-top: 25px; color: #888; font-size: 0.9rem; text-decoration: none; transition: 0.2s; }
-        .switch-link span { color: #fff; font-weight: bold; }
-        .switch-link:hover span { color: var(--accent); }
-        
-        @media (max-width: 500px) { .grid-inputs { grid-template-columns: 1fr; gap: 0; } }
+        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); padding: 15px; border-radius: 12px; margin-bottom: 25px; font-size: 0.95rem; text-align: center; font-weight: bold;}
+        .footer-text { text-align: center; margin-top: 25px; color: #888; font-size: 0.95rem;}
+        .footer-text a { color: #2DD4BF; text-decoration: none; font-weight: bold; transition: 0.2s;}
+        .footer-text a:hover { color: #fff;}
     </style>
 </head>
 <body>
 
-<div class="auth-container">
-    <div class="logo">MILE<span>LE</span></div>
-    <div class="subtitle">Join the Next-Gen Student Network</div>
+<div class="auth-card">
+    <div class="brand">MILELE</div>
+    <div class="subtitle">The secure campus marketplace.</div>
 
-    <?php if(isset($_SESSION['error_msg'])): ?>
-        <div class="error-msg"><?php echo htmlspecialchars($_SESSION['error_msg']); unset($_SESSION['error_msg']); ?></div>
-    <?php endif; ?>
+    <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
 
-    <form action="auth_process.php" method="POST">
+    <a href="#" class="btn-social" onclick="alert('Google OAuth setup required in backend.'); return false;" style="text-decoration:none;">
+        <span style="font-size: 1.2rem;">G</span> Continue with Google
+    </a>
+
+    <div class="divider">OR</div>
+
+    <form method="POST">
         <div class="input-group">
-            <label>Full Name</label>
-            <input type="text" name="full_name" required placeholder="e.g., Ken Lang'at">
+            <input type="text" name="full_name" class="input-field" placeholder="Full Name" required>
         </div>
-
         <div class="input-group">
-            <label>Student Email</label>
-            <input type="email" name="email" required placeholder="you@student.ac.ke">
+            <input type="email" name="email" class="input-field" placeholder="University Email (.edu or .ac.ke)" required>
         </div>
-
-        <div class="grid-inputs">
-            <div class="input-group">
-                <label>M-Pesa Number</label>
-                <input type="tel" name="phone_number" required placeholder="07XX XXX XXX">
-            </div>
-            <div class="input-group">
-                <label>University</label>
-                <input type="text" name="university_name" required placeholder="e.g., CUEA">
-            </div>
-        </div>
-
         <div class="input-group">
-            <label>Password</label>
-            <input type="password" name="password" required placeholder="••••••••">
+            <select name="university" class="input-field" required style="appearance: none; cursor: pointer;">
+                <option value="" disabled selected>Select University</option>
+                <option value="Strathmore University">Strathmore University</option>
+                <option value="CUEA">CUEA</option>
+                <option value="UoN">University of Nairobi</option>
+                <option value="KU">Kenyatta University</option>
+            </select>
         </div>
-
+        <div class="input-group">
+            <input type="password" name="password" class="input-field" placeholder="Create Password (Min 8 characters)" required minlength="8">
+        </div>
         <button type="submit" class="btn-primary">Create Account</button>
     </form>
 
-    <a href="login.php" class="switch-link">Already have an account? <span>Sign in</span></a>
+    <div class="footer-text">
+        Already have an account? <a href="login.php">Log In</a>
+    </div>
 </div>
 
 </body>
