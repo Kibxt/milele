@@ -1,8 +1,16 @@
 <?php
-// MILELE - Secure Login Engine
+// MILELE - Secure Login Engine (With Auto-Patch)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
+
+// ==========================================
+// 🛠️ SILENT DATABASE SECURITY UPGRADES
+// ==========================================
+try { $pdo->exec("ALTER TABLE users ADD COLUMN is_verified TINYINT(1) DEFAULT 0"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN otp_code VARCHAR(6) DEFAULT NULL"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
+try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_uid VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
 
 $error = '';
 
