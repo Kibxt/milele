@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                $api_key = getenv('BREVO_API_KEY');
                 
                 $email_data = [
-                    'sender' => ['name' => 'MILELE Security', 'email' => 'security@milelecampus.com'],
+                    'sender' => ['name' => 'MILELE Security', 'email' => 'kibeta425@gmail.com'],
                     'to' => [['email' => $email, 'name' => $full_name]],
                     'subject' => 'Your MILELE Verification Code',
                     'htmlContent' => "
