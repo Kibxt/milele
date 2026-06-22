@@ -1,5 +1,5 @@
 <?php
-// MILELE - Public Trust Profile (With Social Engine)
+// MILELE - Public Trust Profile (With Social Engine & Auto-Patch)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -13,17 +13,33 @@ if (!$profile_id) {
 }
 
 // ==========================================
+// 🛠️ SILENT DATABASE UPGRADE
+// ==========================================
+try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS follows (
+        follower_id INT NOT NULL,
+        followed_id INT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (follower_id, followed_id)
+    )");
+} catch (PDOException $e) {}
+
+// ==========================================
 // 🤝 FOLLOW / UNFOLLOW LOGIC
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $current_user_id) {
-    if ($_POST['action'] === 'follow') {
-        $pdo->prepare("INSERT IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)")->execute([$current_user_id, $profile_id]);
-    } elseif ($_POST['action'] === 'unfollow') {
-        $pdo->prepare("DELETE FROM follows WHERE follower_id = ? AND followed_id = ?")->execute([$current_user_id, $profile_id]);
+    try {
+        if ($_POST['action'] === 'follow') {
+            $pdo->prepare("INSERT IGNORE INTO follows (follower_id, followed_id) VALUES (?, ?)")->execute([$current_user_id, $profile_id]);
+        } elseif ($_POST['action'] === 'unfollow') {
+            $pdo->prepare("DELETE FROM follows WHERE follower_id = ? AND followed_id = ?")->execute([$current_user_id, $profile_id]);
+        }
+        header("Location: public_profile.php?id=$profile_id");
+        exit();
+    } catch (PDOException $e) {
+        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Follow Action Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
     }
-    // Refresh to update stats without resubmitting form
-    header("Location: public_profile.php?id=$profile_id");
-    exit();
 }
 
 try {
@@ -57,7 +73,8 @@ try {
     }
 
 } catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'>System Error.</div>");
+    // UNMASKED ERROR: If it fails again, it will tell us exactly why.
+    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Profile Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
 }
 ?>
 <!DOCTYPE html>
