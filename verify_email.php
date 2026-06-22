@@ -1,36 +1,47 @@
 <?php
-// MILELE - Secure Email Verification
+// MILELE - Strict Verification & Database Insertion
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
 
-if (!isset($_SESSION['pending_email'])) {
+// Check if they came from the registration page
+if (!isset($_SESSION['pending_reg'])) {
     header("Location: register.php");
     exit();
 }
 
-$email = $_SESSION['pending_email'];
+$pending_data = $_SESSION['pending_reg'];
+$email = $pending_data['email'];
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $entered_code = trim($_POST['otp']);
 
-    try {
-        $stmt = $pdo->prepare("SELECT user_id, otp_code FROM users WHERE email = ? AND is_verified = 0");
-        $stmt->execute([$email]);
-        $user = $stmt->fetch();
-
-        if ($user && $user['otp_code'] === $entered_code) {
-            $pdo->prepare("UPDATE users SET is_verified = 1, otp_code = NULL WHERE email = ?")->execute([$email]);
-            $_SESSION['user_id'] = $user['user_id'];
-            unset($_SESSION['pending_email']);
-            header("Location: profile.php"); // Route to dashboard on success
+    if ($entered_code === $pending_data['otp']) {
+        try {
+            // THE CODE IS CORRECT. NOW WE OFFICIALLY CREATE THE ACCOUNT.
+            $stmt = $pdo->prepare("INSERT INTO users (full_name, email, university_name, password_hash, is_verified) VALUES (?, ?, ?, ?, 1)");
+            $stmt->execute([
+                $pending_data['full_name'], 
+                $pending_data['email'], 
+                $pending_data['university'], 
+                $pending_data['password_hash']
+            ]);
+            
+            // Log them in
+            $_SESSION['user_id'] = $pdo->lastInsertId();
+            
+            // Clear the temporary session data
+            unset($_SESSION['pending_reg']);
+            
+            header("Location: profile.php");
             exit();
-        } else {
-            $error = "Incorrect verification code. Please try again.";
+            
+        } catch (PDOException $e) {
+            $error = "Database Error: It's possible this email was verified in another session.";
         }
-    } catch (PDOException $e) {
-        $error = "System Error.";
+    } else {
+        $error = "Incorrect verification code. Please check your email and try again.";
     }
 }
 ?>

@@ -1,12 +1,11 @@
 <?php
-// MILELE - Premium Registration & Live API OTP Engine
+// MILELE - Strict Session Registration Engine
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
 
 // 🛠️ SILENT DATABASE SECURITY UPGRADES
 try { $pdo->exec("ALTER TABLE users ADD COLUMN is_verified TINYINT(1) DEFAULT 0"); } catch(PDOException $e) {}
-try { $pdo->exec("ALTER TABLE users ADD COLUMN otp_code VARCHAR(6) DEFAULT NULL"); } catch(PDOException $e) {}
 try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
 try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_uid VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
 
@@ -23,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "You must use a valid university email address (.edu or .ac.ke) to join MILELE.";
     } else {
         try {
+            // Check if email already exists in DB
             $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
             $stmt->execute([$email]);
             if ($stmt->fetch()) {
@@ -31,16 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $hashed_password = password_hash($password, PASSWORD_DEFAULT);
                 $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
                 
-                $insert = $pdo->prepare("INSERT INTO users (full_name, email, university_name, password_hash, is_verified, otp_code) VALUES (?, ?, ?, ?, 0, ?)");
-                $insert->execute([$full_name, $email, $university, $hashed_password, $otp]);
-                
                 // ==========================================
                 // 📧 LIVE BREVO EMAIL API INTEGRATION
                 // ==========================================
-               $api_key = getenv('BREVO_API_KEY');
+                $api_key = getenv('BREVO_API_KEY'); 
                 
                 $email_data = [
-                    'sender' => ['name' => 'MILELE Security', 'email' => 'kibeta425@gmail.com'],
+                    'sender' => ['name' => 'MILELE Security', 'email' => 'kibeta425@gmail.com'], // Ensure this matches your Brevo account
                     'to' => [['email' => $email, 'name' => $full_name]],
                     'subject' => 'Your MILELE Verification Code',
                     'htmlContent' => "
@@ -72,7 +69,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_close($ch);
                 // ==========================================
 
-                $_SESSION['pending_email'] = $email;
+                // 🔥 HOLD DATA IN SECURE SESSION, DO NOT WRITE TO DATABASE YET 🔥
+                $_SESSION['pending_reg'] = [
+                    'full_name' => $full_name,
+                    'email' => $email,
+                    'university' => $university,
+                    'password_hash' => $hashed_password,
+                    'otp' => $otp
+                ];
+
                 header("Location: verify_email.php");
                 exit();
             }
