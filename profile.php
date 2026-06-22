@@ -1,5 +1,5 @@
 <?php
-// MILELE - Private User Dashboard (True Transactional Escrow Engine)
+// MILELE - Bulletproof Dashboard & Escrow Simulator
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -22,71 +22,67 @@ $error = '';
 $success = '';
 
 // ==========================================
-// 🛠️ THE FIX: TRANSACTION-BASED ESCROW UPGRADE
+// 🛠️ SILENT DATABASE UPGRADES
 // ==========================================
-// We drop the useless profile PIN and upgrade the listings table to handle real transactions.
 try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE listings ADD COLUMN buyer_id INT DEFAULT NULL"); } catch (PDOException $e) {}
 try { $pdo->exec("ALTER TABLE listings ADD COLUMN escrow_pin VARCHAR(10) DEFAULT NULL"); } catch (PDOException $e) {}
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS follows (
+        follower_id INT NOT NULL, followed_id INT NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY (follower_id, followed_id)
+    )");
+} catch (PDOException $e) {}
 
 // ==========================================
-// 🔐 ESCROW RELEASE LOGIC (SELLER ENTERS PIN)
+// 🧪 DEVELOPER ESCROW SIMULATOR 
+// ==========================================
+if (isset($_GET['simulate']) && $_GET['simulate'] === 'true') {
+    try {
+        $fake_pin = rand(1000, 9999);
+        // Create a fake active item owned by user 1 (or any user), bought by YOU
+        $stmt = $pdo->prepare("INSERT INTO listings (seller_id, buyer_id, title, description, price, category, listing_status, escrow_pin, image_path) VALUES (1, ?, 'Simulated MacBook Pro', 'Testing the escrow engine', 75000, 'Electronics', 'escrow', ?, '[]')");
+        $stmt->execute([$my_id, $fake_pin]);
+        $success = "🧪 SIMULATION SUCCESS: A fake purchase has been added to your vault!";
+    } catch (PDOException $e) {
+        $error = "Simulation failed: " . $e->getMessage();
+    }
+}
+
+// ==========================================
+// 🔐 ESCROW RELEASE LOGIC
 // ==========================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'release_escrow') {
     $listing_id = filter_input(INPUT_POST, 'listing_id', FILTER_VALIDATE_INT);
     $entered_pin = trim(filter_input(INPUT_POST, 'entered_pin', FILTER_SANITIZE_SPECIAL_CHARS));
 
-    // Verify the PIN matches the specific listing
-    $stmt = $pdo->prepare("SELECT escrow_pin FROM listings WHERE listing_id = ? AND seller_id = ? AND listing_status = 'escrow'");
-    $stmt->execute([$listing_id, $my_id]);
-    $real_pin = $stmt->fetchColumn();
+    try {
+        $stmt = $pdo->prepare("SELECT escrow_pin FROM listings WHERE listing_id = ? AND seller_id = ? AND listing_status = 'escrow'");
+        $stmt->execute([$listing_id, $my_id]);
+        $real_pin = $stmt->fetchColumn();
 
-    if ($real_pin && $real_pin === $entered_pin) {
-        // PIN matched! Release funds, mark sold, and boost seller's trust score
-        $pdo->prepare("UPDATE listings SET listing_status = 'sold' WHERE listing_id = ?")->execute([$listing_id]);
-        $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = ?")->execute([$my_id]);
-        $success = "✅ Escrow PIN verified! Funds released and transaction complete.";
-    } else {
-        $error = "❌ Invalid Escrow PIN for this transaction.";
-    }
+        if ($real_pin && $real_pin === $entered_pin) {
+            $pdo->prepare("UPDATE listings SET listing_status = 'sold' WHERE listing_id = ?")->execute([$listing_id]);
+            $pdo->prepare("UPDATE users SET completed_escrows = completed_escrows + 1 WHERE user_id = ?")->execute([$my_id]);
+            $success = "✅ Escrow PIN verified! Funds released and transaction complete.";
+        } else {
+            $error = "❌ Invalid Escrow PIN for this transaction.";
+        }
+    } catch(PDOException $e) { $error = "Release Error: " . $e->getMessage(); }
 }
 
 // ==========================================
-// 📸 PROFILE PICTURE UPLOAD
+// 📊 QUARANTINED DATA FETCHING (BULLETPROOF)
 // ==========================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['profile_pic']) && $_FILES['profile_pic']['error'] === UPLOAD_ERR_OK) {
-    $tmp_name = $_FILES['profile_pic']['tmp_name'];
-    
-    // Bypassing AI scan block for brevity in this specific fix, proceeding to upload
-    $imgbb_api_key = '1006ee1ae706c851943f2918cb115ed8'; 
-    $image_base64 = base64_encode(file_get_contents($tmp_name));
-    
-    $ch_cloud = curl_init();
-    curl_setopt($ch_cloud, CURLOPT_URL, 'https://api.imgbb.com/1/upload?key=' . $imgbb_api_key);
-    curl_setopt($ch_cloud, CURLOPT_POST, 1);
-    curl_setopt($ch_cloud, CURLOPT_POSTFIELDS, ['image' => $image_base64]);
-    curl_setopt($ch_cloud, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch_cloud, CURLOPT_SSL_VERIFYPEER, false);
-    
-    $cloud_result = json_decode(curl_exec($ch_cloud), true);
-    curl_close($ch_cloud);
-    
-    if (isset($cloud_result['data']['url'])) {
-        $new_pic_url = $cloud_result['data']['url'];
-        $pdo->prepare("UPDATE users SET profile_picture = ? WHERE user_id = ?")->execute([$new_pic_url, $my_id]);
-        $success = "Profile picture updated!";
-    }
-}
-
-// ==========================================
-// 📊 FETCH DASHBOARD DATA (Separated Roles)
-// ==========================================
+// 1. Profile Data
 try {
-    // 1. Core Profile Stats
     $stmt = $pdo->prepare("SELECT full_name, university_name, profile_picture, completed_escrows, account_state FROM users WHERE user_id = ?");
     $stmt->execute([$my_id]);
     $user = $stmt->fetch();
+} catch (PDOException $e) { $error .= "<br>User Data Error: " . $e->getMessage(); }
 
+// 2. Follower Data
+$followers = 0; $following = 0;
+try {
     $f_count = $pdo->prepare("SELECT COUNT(*) FROM follows WHERE followed_id = ?");
     $f_count->execute([$my_id]);
     $followers = $f_count->fetchColumn();
@@ -94,25 +90,31 @@ try {
     $fw_count = $pdo->prepare("SELECT COUNT(*) FROM follows WHERE follower_id = ?");
     $fw_count->execute([$my_id]);
     $following = $fw_count->fetchColumn();
+} catch (PDOException $e) { $error .= "<br>Follower Data Error: " . $e->getMessage(); }
 
-    // 2. ACTIVE INVENTORY (Items you are selling, waiting for a buyer)
+// 3. Active Inventory
+$active_listings = [];
+try {
     $stmt_active = $pdo->prepare("SELECT * FROM listings WHERE seller_id = ? AND listing_status = 'active' ORDER BY created_at DESC");
     $stmt_active->execute([$my_id]);
     $active_listings = $stmt_active->fetchAll();
+} catch (PDOException $e) { $error .= "<br>Active Inventory Error: " . $e->getMessage(); }
 
-    // 3. PENDING SALES (Items you are selling, locked in escrow waiting for PIN)
-    $stmt_sales = $pdo->prepare("SELECT l.*, u.full_name as buyer_name FROM listings l JOIN users u ON l.buyer_id = u.user_id WHERE l.seller_id = ? AND l.listing_status = 'escrow' ORDER BY l.created_at DESC");
+// 4. Pending Sales (Seller view)
+$pending_sales = [];
+try {
+    $stmt_sales = $pdo->prepare("SELECT l.*, u.full_name as buyer_name FROM listings l LEFT JOIN users u ON l.buyer_id = u.user_id WHERE l.seller_id = ? AND l.listing_status = 'escrow' ORDER BY l.created_at DESC");
     $stmt_sales->execute([$my_id]);
     $pending_sales = $stmt_sales->fetchAll();
+} catch (PDOException $e) { $error .= "<br>Pending Sales Error: " . $e->getMessage(); }
 
-    // 4. MY PURCHASES (Items you bought, where YOU have the PIN to give)
-    $stmt_purchases = $pdo->prepare("SELECT l.*, u.full_name as seller_name FROM listings l JOIN users u ON l.seller_id = u.user_id WHERE l.buyer_id = ? ORDER BY l.created_at DESC");
+// 5. My Purchases (Buyer view)
+$my_purchases = [];
+try {
+    $stmt_purchases = $pdo->prepare("SELECT l.*, u.full_name as seller_name FROM listings l LEFT JOIN users u ON l.seller_id = u.user_id WHERE l.buyer_id = ? ORDER BY l.created_at DESC");
     $stmt_purchases->execute([$my_id]);
     $my_purchases = $stmt_purchases->fetchAll();
-
-} catch (PDOException $e) {
-    die("Database Error: " . htmlspecialchars($e->getMessage()));
-}
+} catch (PDOException $e) { $error .= "<br>Purchases Error: " . $e->getMessage(); }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -122,7 +124,6 @@ try {
     <title>My Dashboard | MILELE</title>
     <style>
         body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
-        
         .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
         .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
         .nav-actions { display: flex; gap: 15px;}
@@ -134,8 +135,6 @@ try {
         .profile-hero { padding: 60px 20px 40px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
         .avatar-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
         .big-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #2DD4BF; background: #111; display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold; color: #2DD4BF;}
-        .edit-btn { position: absolute; bottom: 0; right: 0; background: #2DD4BF; color: #000; border: none; border-radius: 50%; width: 35px; height: 35px; cursor: pointer; font-size: 1.2rem; display: flex; align-items: center; justify-content: center; transition: 0.2s;}
-        .edit-btn:hover { transform: scale(1.1); background: #fff;}
         
         .profile-name { font-size: 2.5rem; margin: 0 0 10px 0; display: flex; align-items: center; justify-content: center; gap: 10px;}
         .verified-tick { color: #3B82F6; font-size: 1.5rem; }
@@ -172,14 +171,12 @@ try {
         .entity-label { font-size: 0.85rem; color: #888; margin-bottom: 10px;}
         .entity-name { color: #fff; font-weight: bold; }
 
-        /* Escrow Input Panel (For Seller) */
         .escrow-action-box { background: rgba(245,158,11,0.05); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 15px; margin-top: auto;}
         .escrow-input-group { display: flex; gap: 10px; margin-top: 10px;}
         .escrow-input { flex-grow: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; text-align: center; outline: none;}
         .escrow-input:focus { border-color: #F59E0B; }
         .btn-release { background: #F59E0B; color: #000; border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer;}
         
-        /* Escrow Vault Panel (For Buyer) */
         .escrow-vault { background: rgba(45,212,191,0.05); border: 1px solid rgba(45,212,191,0.3); border-radius: 12px; padding: 15px; margin-top: auto;}
         .vault-header { font-size: 0.85rem; color: #2DD4BF; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;}
         .pin-display-group { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);}
@@ -189,6 +186,8 @@ try {
         .btn-icon:hover { background: #2DD4BF; color: #000;}
 
         .empty-state { text-align: center; padding: 40px; color: #666; background: rgba(255,255,255,0.02); border-radius: 20px; border: 1px dashed rgba(255,255,255,0.1);}
+        .sim-btn { background: #8B5CF6; color: #fff; border: none; padding: 5px 15px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; text-decoration: none; margin-left: 15px;}
+        .sim-btn:hover { background: #A78BFA; }
     </style>
 </head>
 <body>
@@ -211,7 +210,6 @@ try {
         <?php else: ?>
             <div class="big-avatar"><?php echo strtoupper(substr($user['full_name'], 0, 1)); ?></div>
         <?php endif; ?>
-        <button class="edit-btn" onclick="document.getElementById('picInput').click()" title="Change Profile Picture">📷</button>
     </div>
 
     <h1 class="profile-name">
@@ -236,20 +234,23 @@ try {
             <div class="stat-label" style="color: #2DD4BF;">Deals Done</div>
         </div>
     </div>
-
-    <form id="picForm" method="POST" enctype="multipart/form-data" style="display:none;">
-        <input type="file" name="profile_pic" id="picInput" accept="image/*" onchange="document.getElementById('picForm').submit();">
-    </form>
 </header>
 
 <main class="dashboard-container">
     
     <div class="section-header">
-        <h2 class="section-title">🛍️ My Purchases (Secure Vault)</h2>
+        <h2 class="section-title">
+            🛍️ My Purchases 
+            <a href="profile.php?simulate=true" class="sim-btn" title="Creates a fake purchase so you can test the PIN UI">🧪 Simulate Purchase</a>
+        </h2>
     </div>
     
     <?php if (empty($my_purchases)): ?>
-        <div class="empty-state">You haven't purchased anything through Escrow yet.</div>
+        <div class="empty-state">
+            <div style="font-size: 2rem; margin-bottom: 10px;">🛒</div>
+            You haven't bought anything yet.<br>
+            <span style="font-size: 0.8rem; color: #444;">(Note: Because we haven't built checkout.php yet, you can use the Simulate button above to see this UI).</span>
+        </div>
     <?php else: ?>
         <div class="grid">
             <?php foreach ($my_purchases as $item): 
@@ -264,7 +265,7 @@ try {
                     
                     <div class="card-body">
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
-                        <div class="entity-label">Seller: <span class="entity-name"><?php echo htmlspecialchars($item['seller_name']); ?></span></div>
+                        <div class="entity-label">Seller: <span class="entity-name"><?php echo htmlspecialchars($item['seller_name'] ?? 'System User'); ?></span></div>
                         
                         <?php if(!$is_sold && $item['escrow_pin']): ?>
                             <div class="escrow-vault">
@@ -283,7 +284,7 @@ try {
     <?php endif; ?>
 
     <div class="section-header">
-        <h2 class="section-title">🔐 Pending Sales (Awaiting PIN)</h2>
+        <h2 class="section-title">🔐 Pending Escrow Sales</h2>
     </div>
 
     <?php if (empty($pending_sales)): ?>
