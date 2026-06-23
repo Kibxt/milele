@@ -1,7 +1,8 @@
 <?php
-// MILELE - Strict Session Registration Engine (Secured & .com Enabled)
+// MILELE - Strict Session Registration Engine (Secured, .com Enabled, Google SSO)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require_once 'config.php'; // Loads the Google SSO link variables dynamically
 require 'db.php';
 
 // 🛠️ SILENT DATABASE SECURITY UPGRADES
@@ -17,11 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $university = trim(filter_input(INPUT_POST, 'university', FILTER_SANITIZE_SPECIAL_CHARS));
     $password = $_POST['password'];
 
-    // Updated: Now accepts .edu, .ac.ke, AND .com emails
+    // Enforce Campus Emails AND .com
     if (!strpos($email, '.edu') && !strpos($email, '.ac.ke') && !strpos($email, '.com')) {
         $error = "Please use a valid email address (.edu, .ac.ke, or .com) to join MILELE.";
     } else {
         try {
+            // Check if email already exists in DB
             $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
             $stmt->execute([$email]);
             if ($stmt->fetch()) {
@@ -68,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_close($ch);
                 // ==========================================
 
+                // 🔥 HOLD DATA IN SECURE SESSION, DO NOT WRITE TO DATABASE YET 🔥
                 $_SESSION['pending_reg'] = [
                     'full_name' => $full_name,
                     'email' => $email,
@@ -122,7 +125,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
 
-    <a href="#" class="btn-social" onclick="alert('Google OAuth setup required in backend.'); return false;" style="text-decoration:none;">
+    <a href="<?php echo htmlspecialchars($google_login_url ?? '#'); ?>" class="btn-social" style="text-decoration:none;">
         <span style="font-size: 1.2rem;">G</span> Continue with Google
     </a>
 
