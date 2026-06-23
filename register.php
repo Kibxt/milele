@@ -1,5 +1,5 @@
 <?php
-// MILELE - Strict Session Registration Engine (Secured)
+// MILELE - Strict Session Registration Engine (Secured & .com Enabled)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -17,8 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $university = trim(filter_input(INPUT_POST, 'university', FILTER_SANITIZE_SPECIAL_CHARS));
     $password = $_POST['password'];
 
-    if (!strpos($email, '.edu') && !strpos($email, '.ac.ke')) {
-        $error = "You must use a valid university email address (.edu or .ac.ke) to join MILELE.";
+    // Updated: Now accepts .edu, .ac.ke, AND .com emails
+    if (!strpos($email, '.edu') && !strpos($email, '.ac.ke') && !strpos($email, '.com')) {
+        $error = "Please use a valid email address (.edu, .ac.ke, or .com) to join MILELE.";
     } else {
         try {
             $stmt = $pdo->prepare("SELECT user_id FROM users WHERE email = ?");
@@ -32,7 +33,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // ==========================================
                 // 📧 LIVE BREVO EMAIL API INTEGRATION
                 // ==========================================
-                // Using getenv() to bypass GitHub Push Protection
                 $api_key = getenv('BREVO_API_KEY'); 
                 
                 $email_data = [
@@ -133,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <input type="text" name="full_name" class="input-field" placeholder="Full Name" required>
         </div>
         <div class="input-group">
-            <input type="email" name="email" class="input-field" placeholder="University Email (.edu or .ac.ke)" required>
+            <input type="email" name="email" class="input-field" placeholder="Email Address (.edu, .ac.ke, or .com)" required>
         </div>
         <div class="input-group">
             <select name="university" class="input-field" required style="appearance: none; cursor: pointer;">
