@@ -1,32 +1,61 @@
 <?php
-// MILELE - Premium Creation Studio (Notesing)
+// MILELE - Secure Item Listing Engine
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
+require 'db.php';
 
-// 1. Authentication Check
+// 1. THE BOUNCER: Ensure user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-// ⚡ THE MASTER CONNECTION
-require 'db.php';
+$seller_id = $_SESSION['user_id'];
+$message = '';
+$error = '';
 
-try {
-    // 2. Fetch active user data
-    $stmt = $pdo->prepare("SELECT full_name, account_state FROM users WHERE user_id = :id");
-    $stmt->execute([':id' => $_SESSION['user_id']]);
-    $user = $stmt->fetch();
-
-    if (!$user || $user['account_state'] !== 'active') {
-        header("Location: verification_center.php");
-        exit();
-    }
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $title = trim(filter_input(INPUT_POST, 'title', FILTER_SANITIZE_SPECIAL_CHARS));
+    $description = trim(filter_input(INPUT_POST, 'description', FILTER_SANITIZE_SPECIAL_CHARS));
+    $price = filter_input(INPUT_POST, 'price', FILTER_VALIDATE_FLOAT);
+    $category = trim(filter_input(INPUT_POST, 'category', FILTER_SANITIZE_SPECIAL_CHARS));
     
-    $creator_name = explode(' ', $user['full_name'])[0];
-
-} catch (PDOException $e) {
-    $creator_name = "Creator";
+    // 2. THE INSPECTOR: Handle Image Upload Safely
+    if (isset($_FILES['image']) && $_FILES['image']['error'] === UPLOAD_ERR_OK) {
+        $file_tmp = $_FILES['image']['tmp_name'];
+        $file_name = $_FILES['image']['name'];
+        $file_size = $_FILES['image']['size'];
+        
+        // Extract extension and check if it's an image
+        $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
+        $allowed_exts = ['jpg', 'jpeg', 'png', 'webp'];
+        
+        if (!in_array($file_ext, $allowed_exts)) {
+            $error = "Invalid file type. Only JPG, PNG, and WEBP are allowed.";
+        } elseif ($file_size > 5000000) { // 5MB limit
+            $error = "Image is too large. Maximum size is 5MB.";
+        } else {
+            // Generate a secure, unique filename to prevent overwrites
+            $new_file_name = uniqid('milele_') . '.' . $file_ext;
+            $upload_path = 'uploads/' . $new_file_name;
+            
+            if (move_uploaded_file($file_tmp, $upload_path)) {
+                // 3. THE WRITER: Save to Database
+                try {
+                    $stmt = $pdo->prepare("INSERT INTO listings (seller_id, title, description, price, category, image_path) VALUES (?, ?, ?, ?, ?, ?)");
+                    $stmt->execute([$seller_id, $title, $description, $price, $category, $upload_path]);
+                    
+                    $message = "Listing created successfully!";
+                } catch (PDOException $e) {
+                    $error = "Database Error: " . htmlspecialchars($e->getMessage());
+                }
+            } else {
+                $error = "Failed to upload image to the server.";
+            }
+        }
+    } else {
+        $error = "Please upload an image of your item.";
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -34,241 +63,108 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Studio | MILELE</title>
+    <title>Post an Item | MILELE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Ultra-Premium Glass-Forward Aesthetic */
         :root {
-            --bg-dark: #000000;
-            --glass-bg: rgba(255, 255, 255, 0.03);
-            --glass-border: rgba(255, 255, 255, 0.08);
-            --accent: #2DD4BF;
-            --text-main: #FFFFFF;
-            --text-muted: #888888;
+            --indigo: #1A1040;
+            --amber: #F5A623;
+            --coral: #FF6B6B;
+            --mint: #00D4AA;
+            --chalk: #F7F5FF;
+            --slate: #8B7FA8;
+            --white: #ffffff;
+            --card-border: rgba(26,16,64,0.10);
         }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-
-        body {
-            background-color: var(--bg-dark);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 2rem;
-            /* Subtle mesh gradient background effect */
-            background-image: 
-                radial-gradient(circle at 15% 50%, rgba(45, 212, 191, 0.08), transparent 25%),
-                radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.03), transparent 25%);
-        }
-
-        .studio-container {
-            background: var(--glass-bg);
-            backdrop-filter: blur(24px);
-            -webkit-backdrop-filter: blur(24px);
-            border: 1px solid var(--glass-border);
-            border-radius: 32px;
-            padding: 3rem;
-            width: 100%;
-            max-width: 600px;
-            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 2.5rem;
-        }
-
-        .header h1 {
-            font-size: 2rem;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, #fff 0%, #aaa 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        .error-banner {
-            background: rgba(248, 113, 113, 0.1);
-            border: 1px solid rgba(248, 113, 113, 0.2);
-            color: #F87171;
-            padding: 1rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-            text-align: center;
-            font-size: 0.9rem;
-        }
-
-        .input-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .input-group label {
-            display: block;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .input-group input, 
-        .input-group select, 
-        .input-group textarea {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--glass-border);
-            color: var(--text-main);
-            padding: 1rem 1.2rem;
-            border-radius: 16px;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-            outline: none;
-        }
-
-        .input-group input:focus, 
-        .input-group select:focus, 
-        .input-group textarea:focus {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: var(--accent);
-            box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.1);
-        }
-
-        .input-group select option {
-            background: var(--bg-dark);
-            color: var(--text-main);
-        }
-
-        /* Custom File Upload Styling */
-        input[type="file"] {
-            padding: 0.8rem 1rem;
-            color: var(--text-muted);
-        }
-
-        input[type="file"]::file-selector-button {
-            background: rgba(255, 255, 255, 0.1);
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            color: var(--text-main);
-            cursor: pointer;
-            transition: background 0.2s;
-            margin-right: 1rem;
-        }
-
-        input[type="file"]::file-selector-button:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-
-        .btn-primary {
-            width: 100%;
-            background: var(--text-main);
-            color: var(--bg-dark);
-            border: none;
-            padding: 1.2rem;
-            border-radius: 16px;
-            font-size: 1.05rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, background 0.2s;
-            margin-top: 1rem;
-        }
-
-        .btn-primary:hover {
-            background: #e0e0e0;
-            transform: translateY(-2px);
-        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body { background: var(--chalk); color: var(--indigo); font-family: 'Inter', sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 40px 20px; }
         
-        .btn-primary:active {
-            transform: translateY(0);
-        }
-
-        /* Nav back to feed */
-        .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 1.5rem;
-            color: var(--text-muted);
-            text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.2s;
-        }
-
-        .back-link:hover {
-            color: var(--text-main);
-        }
+        .dashboard-card { background: var(--white); border: 1px solid var(--card-border); padding: 40px; border-radius: 24px; width: 100%; max-width: 600px; box-shadow: 0 20px 60px rgba(26,16,64,0.06); }
+        .brand { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--indigo); margin-bottom: 5px; }
+        .subtitle { color: var(--slate); margin-bottom: 30px; font-size: 14px; border-bottom: 1px solid var(--card-border); padding-bottom: 20px; }
+        
+        .input-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 8px; color: var(--indigo); font-size: 14px; font-weight: 600; }
+        
+        .input-field { width: 100%; border: 2px solid var(--card-border); padding: 14px 20px; border-radius: 12px; color: var(--indigo); font-size: 15px; font-family: 'Inter', sans-serif; background: var(--chalk); outline: none; transition: 0.2s; }
+        .input-field:focus { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(245,166,35,0.12); background: var(--white); }
+        textarea.input-field { resize: vertical; min-height: 120px; border-radius: 16px; }
+        
+        .file-upload-wrapper { background: var(--chalk); border: 2px dashed var(--card-border); padding: 30px 20px; border-radius: 16px; text-align: center; color: var(--slate); cursor: pointer; transition: 0.3s; font-size: 14px; font-weight: 500; }
+        .file-upload-wrapper:hover { border-color: var(--amber); background: rgba(245,166,35,0.05); color: var(--indigo); }
+        .file-upload-icon { font-size: 32px; margin-bottom: 10px; display: block; }
+        
+        .btn-primary { width: 100%; padding: 16px; background: var(--amber); color: var(--indigo); border: none; border-radius: 50px; font-weight: 700; font-size: 15px; cursor: pointer; transition: 0.2s; font-family: 'Inter', sans-serif; box-shadow: 0 4px 20px rgba(245,166,35,0.3); margin-top: 10px; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(245,166,35,0.45); }
+        
+        .alert-error { background: rgba(255,107,107,0.1); color: var(--coral); border: 1px solid rgba(255,107,107,0.2); padding: 14px; border-radius: 12px; margin-bottom: 24px; font-size: 14px; text-align: center; font-weight: 600; }
+        .alert-success { background: rgba(0,212,170,0.1); color: #059669; border: 1px solid rgba(0,212,170,0.2); padding: 14px; border-radius: 12px; margin-bottom: 24px; font-size: 14px; text-align: center; font-weight: 600; }
+        
+        .nav-links { display: flex; justify-content: space-between; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--card-border); }
+        .nav-links a { color: var(--slate); text-decoration: none; font-size: 14px; font-weight: 500; transition: 0.2s; }
+        .nav-links a:hover { color: var(--indigo); }
+        .nav-links .danger { color: var(--coral); }
+        .nav-links .danger:hover { opacity: 0.8; }
     </style>
 </head>
 <body>
-    
-    <div class="studio-container">
-        <div class="header">
-            <h1>Studio</h1>
-            <p>Welcome back, <?php echo htmlspecialchars($creator_name); ?>. Create a new listing.</p>
+
+<div class="dashboard-card">
+    <div class="brand">Create Listing</div>
+    <div class="subtitle">Turn your campus stuff into cash.</div>
+
+    <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
+    <?php if($message) echo "<div class='alert-success'>$message</div>"; ?>
+
+    <form method="POST" enctype="multipart/form-data">
+        
+        <div class="input-group">
+            <label>What are you selling?</label>
+            <input type="text" name="title" class="input-field" placeholder="e.g. MacBook Pro M1 2020" required>
         </div>
 
-        <?php if(isset($_SESSION['error_msg'])): ?>
-            <div class="error-banner">
-                <?php echo htmlspecialchars($_SESSION['error_msg']); unset($_SESSION['error_msg']); ?>
-            </div>
-        <?php endif; ?>
-
-        <form action="process_listing.php" method="POST" enctype="multipart/form-data" class="premium-form">
-            
-            <div class="input-group">
-                <label>Item Title</label>
-                <input type="text" name="title" required placeholder="e.g., Advanced Calculus Notes">
-            </div>
-
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
             <div class="input-group">
                 <label>Price (KES)</label>
-                <input type="number" name="price" required placeholder="0.00" min="0" step="0.01">
+                <input type="number" name="price" class="input-field" placeholder="e.g. 85000" required>
             </div>
 
             <div class="input-group">
                 <label>Category</label>
-                <select name="category" required>
-                    <option value="Notes">Academic Notes</option>
-                    <option value="Textbooks">Textbooks</option>
+                <select name="category" class="input-field" required style="cursor: pointer; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg fill=\"%238B7FA8\" height=\"24\" viewBox=\"0 0 24 24\" width=\"24\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M7 10l5 5 5-5z\"/></svg>'); background-repeat: no-repeat; background-position: right 16px center;">
+                    <option value="" disabled selected>Select...</option>
                     <option value="Electronics">Electronics</option>
+                    <option value="Furniture">Furniture</option>
+                    <option value="Books">Textbooks</option>
+                    <option value="Clothes">Clothes</option>
                     <option value="Other">Other</option>
                 </select>
             </div>
+        </div>
 
-            <div class="input-group">
-                <label>Item Type</label>
-                <select name="item_type" required>
-                    <option value="digital">Digital File (Instant Download)</option>
-                    <option value="physical">Physical Item (Escrow Vault)</option>
-                </select>
+        <div class="input-group">
+            <label>Description</label>
+            <textarea name="description" class="input-field" placeholder="Describe the condition, specs, and any other details buyers should know..." required></textarea>
+        </div>
+
+        <div class="input-group">
+            <label>Upload Photos</label>
+            <div class="file-upload-wrapper" onclick="document.getElementById('image').click();">
+                <span class="file-upload-icon">📸</span>
+                <span id="upload-text">Click to browse for an image (JPG, PNG)</span>
+                <input type="file" name="image" id="image" accept="image/*" required style="display:none;" onchange="document.getElementById('upload-text').innerHTML = '<strong>Selected:</strong> ' + this.files[0].name; this.parentElement.style.borderColor = 'var(--mint)'; this.parentElement.style.background = 'rgba(0,212,170,0.05)';">
             </div>
+        </div>
 
-            <div class="input-group">
-                <label>Upload File / Cover Image</label>
-                <input type="file" name="listing_file" required>
-            </div>
+        <button type="submit" class="btn-primary">Post to Marketplace</button>
+    </form>
 
-            <div class="input-group">
-                <label>Description</label>
-                <textarea name="description" rows="4" required placeholder="Describe your item in detail..."></textarea>
-            </div>
-
-            <button type="submit" class="btn-primary">Publish to Global Feed</button>
-        </form>
-        
-        <a href="index.php" class="back-link">← Return to Feed</a>
+    <div class="nav-links">
+        <a href="index.php">&larr; Back to Feed</a>
+        <a href="profile.php">Dashboard</a>
+        <a href="logout.php" class="danger">Log Out</a>
     </div>
+</div>
 
 </body>
 </html>
