@@ -5,7 +5,7 @@ if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once 'config.php'; // Loads the Google SSO link variables dynamically
 require 'db.php';
 
-// 🛠️ SILENT DATABASE SECURITY UPGRADES
+// SILENT DATABASE SECURITY UPGRADES
 try { $pdo->exec("ALTER TABLE users ADD COLUMN is_verified TINYINT(1) DEFAULT 0"); } catch(PDOException $e) {}
 try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_provider VARCHAR(50) DEFAULT NULL"); } catch(PDOException $e) {}
 try { $pdo->exec("ALTER TABLE users ADD COLUMN oauth_uid VARCHAR(255) DEFAULT NULL"); } catch(PDOException $e) {}
@@ -33,7 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $otp = str_pad(rand(0, 999999), 6, '0', STR_PAD_LEFT);
                 
                 // ==========================================
-                // 📧 LIVE BREVO EMAIL API INTEGRATION
+                // LIVE BREVO EMAIL API INTEGRATION
                 // ==========================================
                 $api_key = getenv('BREVO_API_KEY'); 
                 
@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curl_close($ch);
                 // ==========================================
 
-                // 🔥 HOLD DATA IN SECURE SESSION, DO NOT WRITE TO DATABASE YET 🔥
+                // HOLD DATA IN SECURE SESSION, DO NOT WRITE TO DATABASE YET
                 $_SESSION['pending_reg'] = [
                     'full_name' => $full_name,
                     'email' => $email,
