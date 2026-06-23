@@ -1,5 +1,5 @@
 <?php
-// MILELE - Secure User Dashboard
+// MILELE - Secure User Dashboard (Dark Mode)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -14,13 +14,18 @@ $user_id = $_SESSION['user_id'];
 $message = '';
 $error = '';
 
-// 2. ACTION LISTENER: Handle Listing Deletion
+// Catch success messages from create_listing.php
+if (isset($_SESSION['flash_success'])) {
+    $message = $_SESSION['flash_success'];
+    unset($_SESSION['flash_success']);
+}
+
+// 2. ACTION LISTENER: Handle Listing Deletion securely
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'delete') {
     $listing_id = filter_input(INPUT_POST, 'listing_id', FILTER_VALIDATE_INT);
     
     if ($listing_id) {
         try {
-            // Secure Delete: Ensure the listing actually belongs to the logged-in user
             $stmt = $pdo->prepare("DELETE FROM listings WHERE listing_id = ? AND seller_id = ?");
             $stmt->execute([$listing_id, $user_id]);
             
@@ -55,98 +60,70 @@ try {
 } catch (PDOException $e) {
     die("Database Connection Error.");
 }
-
-// Helper function for avatar initials
-function get_initials($name) {
-    $words = explode(' ', $name);
-    if (count($words) >= 2) return strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
-    return strtoupper(substr($name, 0, 2));
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | MILELE</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>My Dashboard | MILELE</title>
     <style>
-        :root {
-            --indigo: #1A1040;
-            --amber: #F5A623;
-            --coral: #FF6B6B;
-            --mint: #00D4AA;
-            --chalk: #F7F5FF;
-            --slate: #8B7FA8;
-            --white: #ffffff;
-            --card-border: rgba(26,16,64,0.10);
-        }
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0;}
-        body { background: var(--chalk); color: var(--indigo); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column;}
+        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
         
         /* Navigation */
-        nav { background: var(--white); border-bottom: 1px solid var(--card-border); padding: 0 5%; display: flex; align-items: center; justify-content: space-between; height: 70px; position: sticky; top: 0; z-index: 100;}
-        .nav-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 22px; color: var(--indigo); text-decoration: none; }
-        .nav-logo span { color: var(--amber); }
+        nav { padding: 20px 5%; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: space-between; align-items: center; background: #050505;}
+        .brand { font-size: 1.8rem; font-weight: 900; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
         .nav-links { display: flex; gap: 20px; align-items: center;}
-        .btn-ghost { text-decoration: none; font-size: 14px; font-weight: 600; color: var(--slate); transition: 0.2s;}
-        .btn-ghost:hover { color: var(--indigo); }
-        .btn-danger { text-decoration: none; color: var(--coral); font-weight: 600; font-size: 14px; border: 1px solid var(--coral); padding: 8px 16px; border-radius: 50px; transition: 0.2s;}
-        .btn-danger:hover { background: var(--coral); color: var(--white); }
+        .nav-links a { color: #ccc; text-decoration: none; font-weight: bold; transition: 0.2s;}
+        .nav-links a:hover { color: #2DD4BF;}
+        .nav-links .danger { color: #F87171;}
         
         /* Main Container */
-        .container { max-width: 1200px; margin: 0 auto; padding: 40px 5%; flex: 1; width: 100%;}
+        .container { max-width: 1200px; margin: 40px auto; padding: 0 5%; flex: 1; width: 100%; box-sizing: border-box;}
         
         /* Alerts */
-        .alert-success { background: rgba(0,212,170,0.1); color: #059669; border: 1px solid rgba(0,212,170,0.2); padding: 14px; border-radius: 12px; margin-bottom: 24px; font-size: 14px; font-weight: 600; }
-        .alert-error { background: rgba(255,107,107,0.1); color: var(--coral); border: 1px solid rgba(255,107,107,0.2); padding: 14px; border-radius: 12px; margin-bottom: 24px; font-size: 14px; font-weight: 600; }
+        .alert-success { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); padding: 15px; border-radius: 12px; margin-bottom: 25px; font-weight: bold; }
+        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); padding: 15px; border-radius: 12px; margin-bottom: 25px; font-weight: bold; }
 
         /* Profile Header */
-        .profile-header { background: var(--white); border: 1px solid var(--card-border); border-radius: 24px; padding: 40px; display: flex; align-items: center; gap: 30px; box-shadow: 0 10px 30px rgba(26,16,64,0.03); margin-bottom: 40px; flex-wrap: wrap;}
-        .profile-avatar { width: 90px; height: 90px; background: var(--indigo); color: var(--white); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; flex-shrink: 0;}
-        .profile-info h1 { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; margin-bottom: 5px; color: var(--indigo); display: flex; align-items: center; gap: 10px;}
-        .badge-verified { background: var(--mint); color: var(--indigo); font-size: 11px; font-weight: 800; padding: 4px 10px; border-radius: 50px; letter-spacing: 0.05em; text-transform: uppercase;}
-        .profile-details { color: var(--slate); font-size: 15px; display: flex; gap: 15px; flex-wrap: wrap;}
-        .profile-details span { display: flex; align-items: center; gap: 5px;}
+        .profile-card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.08); padding: 30px; border-radius: 20px; margin-bottom: 40px; position: relative; overflow: hidden;}
+        .profile-card::before { content: ''; position: absolute; top: -50px; left: -50px; width: 150px; height: 150px; background: rgba(45,212,191,0.1); filter: blur(50px); pointer-events: none;}
+        .profile-name { font-size: 1.8rem; font-weight: bold; margin-bottom: 10px; color: #fff; display: flex; align-items: center; gap: 10px;}
+        .verified-badge { font-size: 0.8rem; background: rgba(45,212,191,0.2); color: #2DD4BF; padding: 4px 10px; border-radius: 50px; font-weight: bold; border: 1px solid rgba(45,212,191,0.3);}
+        .profile-details { color: #888; font-size: 1rem; display: flex; gap: 20px;}
 
-        /* Section Title & Action */
-        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;}
-        .section-header h2 { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800;}
-        .btn-primary { background: var(--amber); color: var(--indigo); text-decoration: none; padding: 10px 24px; border-radius: 50px; font-weight: 700; font-size: 14px; transition: 0.2s; box-shadow: 0 4px 15px rgba(245,166,35,0.3);}
-        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,166,35,0.4);}
+        /* Section Header */
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;}
+        .section-title { font-size: 1.5rem; font-weight: bold; color: #fff;}
+        .btn-primary { background: #2DD4BF; color: #000; padding: 12px 24px; border-radius: 12px; font-weight: bold; text-decoration: none; transition: 0.3s;}
+        .btn-primary:hover { background: #fff; box-shadow: 0 5px 15px rgba(45,212,191,0.2);}
 
-        /* Listings Grid */
-        .listings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
-        .listing-card { background: var(--white); border: 1px solid var(--card-border); border-radius: 18px; overflow: hidden; transition: 0.3s; position: relative; display: flex; flex-direction: column;}
-        .listing-card:hover { border-color: var(--amber); transform: translateY(-4px); box-shadow: 0 12px 30px rgba(26,16,64,0.08); }
-        .listing-img { width: 100%; height: 200px; object-fit: cover; display: block; border-bottom: 1px solid var(--card-border);}
-        .listing-badge { position: absolute; top: 12px; left: 12px; font-size: 11px; font-weight: 700; background: var(--white); color: var(--indigo); padding: 4px 12px; border-radius: 50px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);}
+        /* Grid & Cards */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
+        .card { background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; transition: 0.3s;}
+        .card:hover { border-color: #2DD4BF; box-shadow: 0 10px 20px rgba(0,0,0,0.3); transform: translateY(-3px);}
+        .card img { width: 100%; height: 200px; object-fit: cover; border-bottom: 1px solid rgba(255,255,255,0.05);}
+        .card-body { padding: 20px; flex: 1; display: flex; flex-direction: column;}
+        .card-category { font-size: 0.8rem; color: #888; text-transform: uppercase; font-weight: bold; margin-bottom: 5px;}
+        .card-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin-bottom: 10px; line-height: 1.4;}
+        .card-price { font-size: 1.5rem; font-weight: 900; color: #2DD4BF; margin-bottom: 20px;}
         
-        .listing-body { padding: 20px; flex: 1; display: flex; flex-direction: column;}
-        .listing-title { font-size: 16px; font-weight: 700; color: var(--indigo); line-height: 1.3; margin-bottom: 8px;}
-        .listing-price { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--indigo); margin-bottom: 20px;}
-        .listing-price span { font-size: 14px; font-weight: 600; color: var(--slate);}
-        
-        /* Delete Button Form */
-        .listing-actions { margin-top: auto; display: flex; gap: 10px;}
-        .form-delete { flex: 1; }
-        .btn-delete { width: 100%; background: var(--chalk); color: var(--coral); border: 1px solid rgba(255,107,107,0.3); padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.2s; font-family: 'Inter', sans-serif;}
-        .btn-delete:hover { background: var(--coral); color: var(--white); border-color: var(--coral);}
+        .btn-delete { width: 100%; background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); padding: 12px; border-radius: 10px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: auto;}
+        .btn-delete:hover { background: #F87171; color: #000;}
 
         /* Empty State */
-        .empty-state { text-align: center; padding: 60px 20px; background: var(--white); border-radius: 20px; border: 2px dashed var(--card-border); grid-column: 1 / -1;}
-        .empty-state-icon { font-size: 48px; margin-bottom: 15px;}
-        .empty-state h3 { font-family: 'Syne', sans-serif; font-size: 20px; color: var(--indigo); margin-bottom: 10px;}
-        .empty-state p { color: var(--slate); font-size: 15px; margin-bottom: 20px;}
+        .empty-state { grid-column: 1 / -1; text-align: center; padding: 60px 20px; background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.2); border-radius: 16px;}
+        .empty-state h3 { color: #fff; margin-bottom: 10px; font-size: 1.5rem;}
+        .empty-state p { color: #888; margin-bottom: 25px;}
     </style>
 </head>
 <body>
 
 <nav>
-    <a href="index.php" class="nav-logo">MILELE<span>.</span></a>
+    <a href="index.php" class="brand">MILELE</a>
     <div class="nav-links">
-        <a href="index.php" class="btn-ghost">Browse Feed</a>
-        <a href="logout.php" class="btn-danger">Log Out</a>
+        <a href="index.php">Marketplace</a>
+        <a href="logout.php" class="danger">Log Out</a>
     </div>
 </nav>
 
@@ -154,54 +131,45 @@ function get_initials($name) {
     <?php if($message) echo "<div class='alert-success'>$message</div>"; ?>
     <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
 
-    <div class="profile-header">
-        <div class="profile-avatar">
-            <?php echo get_initials($user['full_name']); ?>
+    <div class="profile-card">
+        <div class="profile-name">
+            <?php echo htmlspecialchars($user['full_name']); ?>
+            <?php if($user['is_verified']): ?>
+                <span class="verified-badge">✓ Verified</span>
+            <?php endif; ?>
         </div>
-        <div class="profile-info">
-            <h1>
-                <?php echo htmlspecialchars($user['full_name']); ?>
-                <?php if($user['is_verified']): ?>
-                    <span class="badge-verified">✓ Verified</span>
-                <?php endif; ?>
-            </h1>
-            <div class="profile-details">
-                <span>📧 <?php echo htmlspecialchars($user['email']); ?></span>
-                <span>🎓 <?php echo htmlspecialchars($user['university_name']); ?></span>
-            </div>
+        <div class="profile-details">
+            <span>📧 <?php echo htmlspecialchars($user['email']); ?></span>
+            <span>🎓 <?php echo htmlspecialchars($user['university_name']); ?></span>
         </div>
     </div>
 
     <div class="section-header">
-        <h2>My Active Listings</h2>
+        <div class="section-title">My Active Listings</div>
         <a href="create_listing.php" class="btn-primary">+ Post New Item</a>
     </div>
 
-    <div class="listings-grid">
+    <div class="grid">
         <?php if (empty($my_listings)): ?>
             <div class="empty-state">
-                <div class="empty-state-icon">📦</div>
                 <h3>Your shop is empty</h3>
                 <p>You haven't posted any items for sale yet. Turn your unused campus items into cash today.</p>
-                <a href="create_listing.php" class="btn-primary" style="display:inline-block;">Post Your First Item</a>
+                <a href="create_listing.php" class="btn-primary">Post Your First Item</a>
             </div>
         <?php else: ?>
             <?php foreach ($my_listings as $item): ?>
-                <div class="listing-card">
-                    <img class="listing-img" src="<?php echo htmlspecialchars($item['image_path'] ?? 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&q=80'); ?>" alt="Listing Image">
-                    <div class="listing-badge"><?php echo htmlspecialchars($item['category']); ?></div>
-                    
-                    <div class="listing-body">
-                        <div class="listing-title"><?php echo htmlspecialchars($item['title']); ?></div>
-                        <div class="listing-price"><span>KES </span><?php echo number_format($item['price']); ?></div>
+                <div class="card">
+                    <img src="<?php echo htmlspecialchars($item['image_path']); ?>" alt="Item Image">
+                    <div class="card-body">
+                        <div class="card-category"><?php echo htmlspecialchars($item['category']); ?></div>
+                        <div class="card-title"><?php echo htmlspecialchars($item['title']); ?></div>
+                        <div class="card-price">Ksh <?php echo number_format($item['price']); ?></div>
                         
-                        <div class="listing-actions">
-                            <form method="POST" class="form-delete" onsubmit="return confirm('Are you sure you want to permanently delete this item?');">
-                                <input type="hidden" name="action" value="delete">
-                                <input type="hidden" name="listing_id" value="<?php echo $item['listing_id']; ?>">
-                                <button type="submit" class="btn-delete">Delete Item</button>
-                            </form>
-                        </div>
+                        <form method="POST" onsubmit="return confirm('Are you sure you want to permanently delete this item?');" style="margin-top:auto;">
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="listing_id" value="<?php echo $item['listing_id']; ?>">
+                            <button type="submit" class="btn-delete">Delete Item</button>
+                        </form>
                     </div>
                 </div>
             <?php endforeach; ?>
