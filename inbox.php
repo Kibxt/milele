@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Split-Screen Inbox (With Profile Pictures)
+// MILELE - Premium Split-Screen Inbox (With Profile Pictures & Light UI)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: inbox.php?user=$receiver_id" . ($list_id ? "&listing=$list_id" : ""));
             exit();
         } catch (PDOException $e) {
-            die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Send Message Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+            die("<div style='background:#1A1040; color:#FF6B6B; padding:50px; text-align:center; font-family:sans-serif;'><strong>Send Message Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
         }
     }
 }
@@ -72,7 +72,7 @@ try {
     $stmt_convos->execute([':my_id' => $my_id]);
     $conversations = $stmt_convos->fetchAll();
 } catch (PDOException $e) {
-    die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Sidebar Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+    die("<div style='background:#1A1040; color:#FF6B6B; padding:50px; text-align:center; font-family:sans-serif;'><strong>Sidebar Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
 }
 
 // ==========================================
@@ -105,7 +105,7 @@ if ($active_user_id) {
         $stmt_chat->execute([':me' => $my_id, ':them' => $active_user_id]);
         $chat_history = $stmt_chat->fetchAll();
     } catch (PDOException $e) {
-        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center;'><strong>Chat Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
+        die("<div style='background:#1A1040; color:#FF6B6B; padding:50px; text-align:center; font-family:sans-serif;'><strong>Chat Load Error:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
     }
 }
 
@@ -115,6 +115,12 @@ function formatChatMessage($text) {
     }
     return nl2br($text);
 }
+
+function get_initials($name) {
+    $words = explode(' ', $name);
+    if (count($words) >= 2) return strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
+    return strtoupper(substr($name, 0, 2));
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -122,80 +128,108 @@ function formatChatMessage($text) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Inbox | MILELE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        :root {
+            --indigo: #1A1040;
+            --amber: #F5A623;
+            --coral: #FF6B6B;
+            --mint: #00D4AA;
+            --chalk: #F7F5FF;
+            --slate: #8B7FA8;
+            --white: #ffffff;
+            --card-border: rgba(26,16,64,0.10);
+        }
+        body { background: var(--chalk); color: var(--indigo); font-family: 'Inter', sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
         
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 15px 30px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); z-index: 100; flex-shrink: 0;}
-        .brand { font-size: 1.5rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
-        .btn-glass { padding: 8px 16px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; transition: 0.3s; font-size: 0.9rem;}
-        .btn-glass:hover { background: rgba(255,255,255,0.1); }
+        /* Navigation */
+        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 0 5%; border-bottom: 1px solid var(--card-border); background: rgba(247,245,255,0.94); backdrop-filter: blur(14px); z-index: 100; flex-shrink: 0; height: 70px;}
+        .brand { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--indigo); text-decoration: none; display: flex; align-items: center; gap: 8px;}
+        .logo-dot { width: 10px; height: 10px; background: var(--amber); border-radius: 50%; display: inline-block; }
+        .nav-actions { display: flex; gap: 12px; align-items: center;}
+        .btn-glass { padding: 9px 20px; background: transparent; color: var(--indigo); text-decoration: none; border: 1.5px solid var(--indigo); border-radius: 50px; font-weight: 700; font-size: 13px; transition: 0.2s;}
+        .btn-glass:hover { background: var(--indigo); color: var(--white); }
 
         .inbox-container { display: flex; flex-grow: 1; overflow: hidden; }
         
-        .sidebar { width: 350px; background: rgba(255,255,255,0.02); border-right: 1px solid rgba(255,255,255,0.05); display: flex; flex-direction: column; flex-shrink: 0;}
-        .sidebar-header { padding: 20px; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.05); color: #fff;}
+        /* Sidebar (Conversation List) */
+        .sidebar { width: 350px; background: var(--white); border-right: 1px solid var(--card-border); display: flex; flex-direction: column; flex-shrink: 0;}
+        .sidebar-header { padding: 24px 20px; font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; border-bottom: 1px solid var(--card-border); color: var(--indigo);}
         .convo-list { overflow-y: auto; flex-grow: 1; }
         
-        .convo-item { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.02); display: flex; align-items: center; gap: 15px; cursor: pointer; text-decoration: none; color: #fff; transition: 0.2s;}
-        .convo-item:hover, .convo-item.active { background: rgba(45,212,191,0.05); border-left: 4px solid #2DD4BF; }
-        .avatar { width: 45px; height: 45px; border-radius: 50%; background: #111; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #2DD4BF; flex-shrink: 0; object-fit: cover;}
+        .convo-item { padding: 20px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 15px; cursor: pointer; text-decoration: none; color: var(--indigo); transition: 0.2s; border-left: 4px solid transparent;}
+        .convo-item:hover { background: var(--chalk); }
+        .convo-item.active { background: var(--chalk); border-left: 4px solid var(--amber); }
+        
+        .avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--indigo); border: 2px solid var(--white); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: var(--white); flex-shrink: 0; object-fit: cover; box-shadow: 0 4px 10px rgba(26,16,64,0.1);}
+        
         .convo-details { flex-grow: 1; overflow: hidden; }
-        .convo-name { font-weight: bold; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center;}
-        .convo-preview { font-size: 0.85rem; color: #888; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .unread-badge { background: #EF4444; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: bold; }
+        .convo-name { font-weight: 700; font-size: 15px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; color: var(--indigo);}
+        .convo-preview { font-size: 13px; color: var(--slate); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 500;}
+        .unread-badge { background: var(--coral); color: var(--white); font-size: 10px; padding: 3px 8px; border-radius: 50px; font-weight: 800; }
 
-        .chat-area { flex-grow: 1; display: flex; flex-direction: column; background: radial-gradient(circle at center, rgba(45,212,191,0.03), transparent 70%); position: relative;}
-        .chat-header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 15px; background: rgba(0,0,0,0.5); backdrop-filter: blur(10px);}
-        .chat-header-name { font-size: 1.2rem; font-weight: bold; color: #fff; text-decoration: none;}
-        .chat-header-name:hover { color: #2DD4BF; }
+        /* Chat Area */
+        .chat-area { flex-grow: 1; display: flex; flex-direction: column; background: var(--chalk); position: relative;}
         
-        .messages-box { flex-grow: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; scroll-behavior: smooth;}
+        .chat-header { padding: 20px 30px; border-bottom: 1px solid var(--card-border); display: flex; align-items: center; gap: 15px; background: rgba(255,255,255,0.9); backdrop-filter: blur(10px);}
+        .chat-header-name { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: var(--indigo); text-decoration: none; transition: 0.2s;}
+        .chat-header-name:hover { color: var(--amber); }
         
-        .bubble { max-width: 70%; padding: 12px 18px; border-radius: 20px; font-size: 0.95rem; line-height: 1.5; position: relative;}
-        .bubble-received { background: rgba(255,255,255,0.08); color: #fff; align-self: flex-start; border-bottom-left-radius: 5px; }
-        .bubble-sent { background: #2DD4BF; color: #000; align-self: flex-end; border-bottom-right-radius: 5px; box-shadow: 0 4px 15px rgba(45,212,191,0.2);}
-        .bubble-time { font-size: 0.7rem; opacity: 0.6; margin-top: 5px; display: block; text-align: right;}
+        .messages-box { flex-grow: 1; padding: 30px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth;}
+        
+        .bubble { max-width: 70%; padding: 14px 20px; border-radius: 20px; font-size: 15px; line-height: 1.5; position: relative;}
+        .bubble-received { background: var(--white); color: var(--indigo); align-self: flex-start; border-bottom-left-radius: 4px; border: 1px solid var(--card-border); box-shadow: 0 4px 12px rgba(26,16,64,0.03);}
+        .bubble-sent { background: var(--indigo); color: var(--white); align-self: flex-end; border-bottom-right-radius: 4px; box-shadow: 0 6px 16px rgba(26,16,64,0.1);}
+        .bubble-time { font-size: 11px; opacity: 0.7; margin-top: 6px; display: block; text-align: right; font-weight: 500;}
         .chat-gif { max-width: 250px; border-radius: 12px; margin-top: 5px; display: block;}
 
-        .input-wrapper { padding: 20px; background: rgba(0,0,0,0.8); border-top: 1px solid rgba(255,255,255,0.05); position: relative;}
-        .input-bar { display: flex; align-items: flex-end; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 24px; padding: 5px 10px; transition: 0.3s;}
-        .input-bar:focus-within { border-color: #2DD4BF; background: rgba(255,255,255,0.08); }
+        /* Input Area */
+        .input-wrapper { padding: 24px 30px; background: var(--white); border-top: 1px solid var(--card-border); position: relative;}
+        .input-bar { display: flex; align-items: flex-end; background: var(--chalk); border: 2px solid var(--card-border); border-radius: 24px; padding: 6px 12px; transition: 0.3s;}
+        .input-bar:focus-within { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(245,166,35,0.1); background: var(--white);}
         
         .media-actions { display: flex; gap: 8px; padding: 10px 5px; }
-        .media-btn { background: transparent; border: none; color: #888; font-size: 1.2rem; cursor: pointer; transition: 0.2s; border-radius: 50%; width: 35px; height: 35px; display: flex; align-items: center; justify-content: center;}
-        .media-btn:hover { color: #2DD4BF; background: rgba(45,212,191,0.1); }
+        .media-btn { background: transparent; border: none; color: var(--slate); font-size: 20px; cursor: pointer; transition: 0.2s; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;}
+        .media-btn:hover { color: var(--indigo); background: rgba(26,16,64,0.05); }
         
-        .chat-input { flex-grow: 1; background: transparent; border: none; color: #fff; padding: 15px 10px; font-size: 1rem; outline: none; resize: none; font-family: inherit; max-height: 100px; overflow-y: auto;}
+        .chat-input { flex-grow: 1; background: transparent; border: none; color: var(--indigo); padding: 16px 12px; font-size: 15px; outline: none; resize: none; font-family: 'Inter', sans-serif; max-height: 120px; overflow-y: auto; font-weight: 500;}
+        .chat-input::placeholder { color: var(--slate); }
         
-        .btn-send { padding: 0 20px; margin: 5px; height: 40px; background: #2DD4BF; color: #000; border: none; border-radius: 20px; font-weight: bold; cursor: pointer; transition: 0.2s;}
-        .btn-send:hover { background: #fff; transform: translateY(-2px);}
+        .btn-send { padding: 0 24px; margin: 6px; height: 44px; background: var(--amber); color: var(--indigo); border: none; border-radius: 50px; font-weight: 800; cursor: pointer; transition: 0.2s; font-family: 'Inter', sans-serif;}
+        .btn-send:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(245,166,35,0.3);}
 
-        .media-panel { position: absolute; bottom: 85px; left: 20px; background: rgba(20,20,20,0.95); backdrop-filter: blur(15px); border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; width: 300px; height: 350px; display: none; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.5); z-index: 50;}
+        /* Media Panels (Emojis & GIFs) */
+        .media-panel { position: absolute; bottom: 100px; left: 30px; background: var(--white); border: 1px solid var(--card-border); border-radius: 20px; width: 320px; height: 380px; display: none; flex-direction: column; box-shadow: 0 16px 40px rgba(26,16,64,0.12); z-index: 50; overflow: hidden;}
         .media-panel.active { display: flex; animation: popUp 0.2s ease-out;}
         @keyframes popUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        .panel-header { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; justify-content: space-between; align-items: center;}
-        .panel-title { font-size: 0.85rem; font-weight: bold; color: #aaa; text-transform: uppercase; padding-left: 10px;}
-        .close-panel { background: transparent; border: none; color: #888; cursor: pointer; font-size: 1.2rem;}
-        .close-panel:hover { color: #fff; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid var(--card-border); display: flex; justify-content: space-between; align-items: center; background: var(--chalk);}
+        .panel-title { font-size: 12px; font-weight: 800; color: var(--slate); text-transform: uppercase; letter-spacing: 0.05em;}
+        .close-panel { background: transparent; border: none; color: var(--slate); cursor: pointer; font-size: 20px; font-weight: bold; transition: 0.2s;}
+        .close-panel:hover { color: var(--coral); }
 
-        .emoji-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; padding: 15px; overflow-y: auto;}
-        .emoji-item { font-size: 1.5rem; cursor: pointer; text-align: center; transition: 0.2s; user-select: none;}
+        .emoji-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; padding: 20px; overflow-y: auto;}
+        .emoji-item { font-size: 24px; cursor: pointer; text-align: center; transition: 0.2s; user-select: none;}
         .emoji-item:hover { transform: scale(1.3); }
 
-        .gif-search { background: rgba(255,255,255,0.05); border: none; border-bottom: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px 15px; outline: none; width: 100%; box-sizing: border-box;}
-        .gif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 10px; overflow-y: auto; flex-grow: 1;}
-        .gif-item { width: 100%; height: 100px; object-fit: cover; border-radius: 8px; cursor: pointer; border: 2px solid transparent;}
-        .gif-item:hover { border-color: #2DD4BF; }
+        .gif-search { background: var(--white); border: none; border-bottom: 1px solid var(--card-border); color: var(--indigo); padding: 16px 20px; outline: none; width: 100%; box-sizing: border-box; font-family: 'Inter', sans-serif; font-size: 14px;}
+        .gif-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; overflow-y: auto; flex-grow: 1; background: var(--chalk);}
+        .gif-item { width: 100%; height: 110px; object-fit: cover; border-radius: 12px; cursor: pointer; border: 2px solid transparent; transition: 0.2s;}
+        .gif-item:hover { border-color: var(--amber); transform: scale(1.02);}
 
-        .empty-chat { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; color: #666; }
+        /* Empty States */
+        .empty-chat { display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 1; color: var(--slate); text-align: center;}
+        .empty-chat-icon { font-size: 64px; margin-bottom: 16px; opacity: 0.5;}
+        .empty-chat h2 { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--indigo); margin-bottom: 8px;}
+        .empty-chat p { font-size: 15px; font-weight: 500;}
 
         @media (max-width: 768px) {
             .inbox-container { flex-direction: column; }
-            .sidebar { width: 100%; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.05); max-height: 35vh; <?php echo $active_user_id ? 'display: none;' : ''; ?> }
+            .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--card-border); max-height: 35vh; <?php echo $active_user_id ? 'display: none;' : ''; ?> }
             .chat-area { <?php echo !$active_user_id ? 'display: none;' : ''; ?> height: 65vh;}
-            .mobile-back { display: <?php echo $active_user_id ? 'block' : 'none'; ?>; margin-right: 15px; color: #2DD4BF; text-decoration: none; font-size: 1.5rem;}
+            .mobile-back { display: <?php echo $active_user_id ? 'block' : 'none'; ?>; margin-right: 15px; color: var(--indigo); text-decoration: none; font-size: 24px; font-weight: bold;}
             .media-panel { width: calc(100% - 40px); left: 20px; right: 20px; }
+            .input-wrapper { padding: 16px 20px; }
         }
         @media (min-width: 769px) { .mobile-back { display: none; } }
     </style>
@@ -203,8 +237,11 @@ function formatChatMessage($text) {
 <body>
 
 <nav class="nav-bar">
-    <a href="index.php" class="brand">MILELE</a>
-    <a href="index.php" class="btn-glass">← Market Feed</a>
+    <a href="index.php" class="nav-logo"><span class="logo-dot"></span>MILELE</a>
+    <div class="nav-actions">
+        <a href="profile.php" class="btn-ghost" style="border: none; color: var(--slate);">Dashboard</a>
+        <a href="index.php" class="btn-ghost">← Market Feed</a>
+    </div>
 </nav>
 
 <div class="inbox-container">
@@ -213,15 +250,15 @@ function formatChatMessage($text) {
         <div class="sidebar-header">Messages</div>
         <div class="convo-list">
             <?php if(empty($conversations)): ?>
-                <div style="padding: 30px; text-align: center; color: #666; font-size: 0.9rem;">No active conversations. Reach out to a seller to start chatting!</div>
+                <div style="padding: 40px 30px; text-align: center; color: var(--slate); font-size: 14px; font-weight: 500; line-height: 1.6;">No active conversations. Reach out to a seller to start chatting!</div>
             <?php else: ?>
                 <?php foreach($conversations as $convo): ?>
                     <a href="inbox.php?user=<?php echo $convo['user_id']; ?>" class="convo-item <?php echo ($active_user_id == $convo['user_id']) ? 'active' : ''; ?>">
                         
-                        <?php if($convo['profile_picture']): ?>
+                        <?php if(!empty($convo['profile_picture'])): ?>
                             <img src="<?php echo htmlspecialchars($convo['profile_picture']); ?>" class="avatar" alt="Avatar">
                         <?php else: ?>
-                            <div class="avatar"><?php echo strtoupper(substr($convo['full_name'], 0, 1)); ?></div>
+                            <div class="avatar"><?php echo get_initials($convo['full_name']); ?></div>
                         <?php endif; ?>
 
                         <div class="convo-details">
@@ -248,30 +285,28 @@ function formatChatMessage($text) {
     <div class="chat-area">
         <?php if(!$active_user_id): ?>
             <div class="empty-chat">
-                <div style="font-size: 4rem; opacity: 0.5;">💬</div>
+                <div class="empty-chat-icon">💬</div>
                 <h2>Your Inbox</h2>
-                <p>Select a conversation from the left.</p>
+                <p>Select a conversation from the sidebar to start messaging.</p>
             </div>
         <?php else: ?>
             <div class="chat-header">
                 <a href="inbox.php" class="mobile-back">←</a>
                 <a href="public_profile.php?id=<?php echo $active_user_id; ?>" title="View Profile" style="text-decoration: none;">
-                    
                     <?php if($active_user_pic): ?>
-                        <img src="<?php echo htmlspecialchars($active_user_pic); ?>" class="avatar" style="border-color: #2DD4BF; transition: 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" alt="Avatar">
+                        <img src="<?php echo htmlspecialchars($active_user_pic); ?>" class="avatar" style="transition: 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'" alt="Avatar">
                     <?php else: ?>
-                        <div class="avatar" style="cursor:pointer; border-color: #2DD4BF; transition: 0.2s;" onmouseover="this.style.background='rgba(45,212,191,0.2)'" onmouseout="this.style.background='#111'"><?php echo strtoupper(substr($active_user_name, 0, 1)); ?></div>
+                        <div class="avatar" style="transition: 0.2s;" onmouseover="this.style.background='var(--indigo-mid)'" onmouseout="this.style.background='var(--indigo)'"><?php echo get_initials($active_user_name); ?></div>
                     <?php endif; ?>
-                    
                 </a>
                 <a href="public_profile.php?id=<?php echo $active_user_id; ?>" class="chat-header-name"><?php echo htmlspecialchars($active_user_name); ?></a>
                 
-                <a href="public_profile.php?id=<?php echo $active_user_id; ?>" class="btn-glass" style="margin-left: auto; font-size: 0.8rem; padding: 6px 12px;">View Profile</a>
+                <a href="public_profile.php?id=<?php echo $active_user_id; ?>" class="btn-ghost" style="margin-left: auto; font-size: 11px; padding: 6px 14px; text-transform: uppercase; letter-spacing: 0.05em;">View Profile</a>
             </div>
 
             <div class="messages-box" id="chatBox">
                 <?php if(empty($chat_history)): ?>
-                    <div style="text-align: center; color: #666; margin-top: 20px;">This is the beginning of your conversation.</div>
+                    <div style="text-align: center; color: var(--slate); font-weight: 500; font-size: 14px; margin-top: 30px; background: var(--white); padding: 12px 20px; border-radius: 50px; align-self: center; border: 1px solid var(--card-border);">This is the beginning of your conversation.</div>
                 <?php else: ?>
                     <?php foreach($chat_history as $msg): 
                         $is_me = ($msg['sender_id'] == $my_id);
@@ -311,7 +346,7 @@ function formatChatMessage($text) {
                     <div class="input-bar">
                         <div class="media-actions">
                             <button type="button" class="media-btn" title="Emojis" onclick="togglePanel('emojiPanel')">😀</button>
-                            <button type="button" class="media-btn" title="GIFs" onclick="togglePanel('gifPanel')">GIF</button>
+                            <button type="button" class="media-btn" title="GIFs" onclick="togglePanel('gifPanel')" style="font-weight: 800; font-size: 12px; font-family: 'Syne', sans-serif;">GIF</button>
                         </div>
                         <textarea name="message" class="chat-input" placeholder="Type a message..." required id="msgInput" rows="1"></textarea>
                         <button type="submit" class="btn-send">Send</button>
@@ -323,19 +358,24 @@ function formatChatMessage($text) {
 </div>
 
 <script>
+    // Keep scroll at bottom of chat
     const chatBox = document.getElementById('chatBox');
     if(chatBox) chatBox.scrollTop = chatBox.scrollHeight;
 
+    // Shift+Enter for new line, Enter to send
     const msgInput = document.getElementById('msgInput');
     if(msgInput) {
         msgInput.addEventListener('keydown', function(e) {
             if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                document.getElementById('chatForm').submit();
+                if (this.value.trim() !== '') {
+                    document.getElementById('chatForm').submit();
+                }
             }
         });
     }
 
+    // Toggle Media Panels
     function togglePanel(panelId) {
         document.querySelectorAll('.media-panel').forEach(p => {
             if(p.id !== panelId) p.classList.remove('active');
@@ -343,6 +383,7 @@ function formatChatMessage($text) {
         document.getElementById(panelId).classList.toggle('active');
     }
 
+    // Populate Emojis
     const emojis = ['😀','😂','🥺','🔥','❤️','👍','✨','💀','😭','👀','💯','🙏','😊','😎','🤔','🙌','🎉','🚀','💸','🤝','❌','✅','📦','🎓'];
     const emojiGrid = document.getElementById('emojiGrid');
     if(emojiGrid) {
@@ -358,6 +399,7 @@ function formatChatMessage($text) {
         });
     }
 
+    // Populate Default GIFs
     const defaultGifs = [
         "https://media.giphy.com/media/11ISwbgCxEzMyY/giphy.gif",
         "https://media.giphy.com/media/3o7TKSjRrfIPjeiVyM/giphy.gif",
