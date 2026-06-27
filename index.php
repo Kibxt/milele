@@ -321,7 +321,7 @@ function get_initials($name) {
     <li><a href="#categories">Categories</a></li>
     <li><a href="#how">How it works</a></li>
     <!-- DIRECT LINK TO SELL -->
-    <li><a href="create_listing.php">Sell</a></li>
+    <li><a href="post_item.php">Sell</a></li>
   </ul>
   <div class="nav-right">
     <?php if ($is_logged_in): ?>
@@ -333,7 +333,7 @@ function get_initials($name) {
         </a>
         <a href="profile.php" class="btn-ghost">Dashboard</a>
         <!-- DIRECT LINK TO SELL -->
-        <a href="create_listing.php" class="btn-primary">+ Post Listing</a>
+        <a href="post_item.php" class="btn-primary">+ Post Listing</a>
         <a href="logout.php" class="btn-danger">Log Out</a>
     <?php else: ?>
         <a href="login.php" class="btn-ghost">Log In</a>
@@ -369,7 +369,7 @@ function get_initials($name) {
     <div class="hero-ctas">
       <a href="#browse" class="btn-hero">Browse Deals →</a>
       <!-- DIRECT LINK TO SELL -->
-      <a href="create_listing.php" class="btn-hero-ghost">Sell Something</a>
+      <a href="post_item.php" class="btn-hero-ghost">Sell Something</a>
     </div>
   </div>
   <div class="hero-right">
@@ -467,7 +467,7 @@ function get_initials($name) {
               <a href="index.php" class="btn-ghost" style="border-color: var(--amber); color: var(--amber);">Clear Filters</a>
           <?php else: ?>
               <!-- DIRECT LINK TO SELL -->
-              <a href="create_listing.php" class="btn-primary" style="display:inline-block; padding: 12px 24px;">Post a Listing</a>
+              <a href="post_item.php" class="btn-primary" style="display:inline-block; padding: 12px 24px;">Post a Listing</a>
           <?php endif; ?>
       </div>
   <?php else: ?>
@@ -649,7 +649,7 @@ function get_initials($name) {
           <a href="register.php" class="btn-dark">Create Free Account</a>
       <?php endif; ?>
       <!-- DIRECT LINK TO SELL -->
-      <a href="create_listing.php" class="btn-outline-dark" style="border-color: var(--indigo); color: var(--indigo);">Post a Listing</a>
+      <a href="post_item.php" class="btn-outline-dark" style="border-color: var(--indigo); color: var(--indigo);">Post a Listing</a>
     </div>
   </div>
 </section>
@@ -680,7 +680,7 @@ function get_initials($name) {
       <h4>Sell</h4>
       <ul>
         <!-- DIRECT LINK TO SELL -->
-        <li><a href="create_listing.php">Post a Listing</a></li>
+        <li><a href="post_item.php">Post a Listing</a></li>
         <li><a href="profile.php">Seller Dashboard</a></li>
         <li><a href="#how">Pricing Tips</a></li>
       </ul>
