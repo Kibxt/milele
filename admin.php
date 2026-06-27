@@ -1,5 +1,5 @@
 <?php
-// MILELE - Ultimate Admin Control Center (Strict Email Security)
+// MILELE - Ultimate Admin Control Center (Strict Email Security + Premium UI)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -31,10 +31,7 @@ try {
     $user_email = $me ? strtolower(trim($me['email'])) : '';
 
     if (!in_array($user_email, $allowed_admins)) {
-        die("<div style='background:#000; color:#F87171; padding:50px; text-align:center; font-family:-apple-system, sans-serif; font-size:1.5rem; border-top: 5px solid #F87171;'>
-            <h2>🚨 Access Denied</h2>
-            <p style='font-size: 1rem; color: #888;'>The email account <strong>" . htmlspecialchars($user_email) . "</strong> does not have Administrator privileges.</p>
-        </div>");
+        die("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Access Denied</title><link href='https://fonts.googleapis.com/css2?family=Syne:wght@800&family=Inter:wght@500&display=swap' rel='stylesheet'></head><body style='background:#F7F5FF; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;'><div style='background:#ffffff; border:1px solid rgba(26,16,64,0.1); padding:50px; text-align:center; border-radius:24px; box-shadow:0 20px 40px rgba(26,16,64,0.05); max-width:400px;'><h2 style='font-family:Syne, sans-serif; font-size:28px; color:#FF6B6B; margin:0 0 10px 0;'>🚨 Access Denied</h2><p style='font-family:Inter, sans-serif; font-size:15px; color:#8B7FA8; margin-bottom:20px; line-height:1.6;'>The email account <strong>" . htmlspecialchars($user_email) . "</strong> does not have Administrator privileges.</p><a href='profile.php' style='display:inline-block; background:#1A1040; color:#fff; padding:12px 24px; border-radius:50px; text-decoration:none; font-family:Inter, sans-serif; font-weight:700;'>Return to Profile</a></div></body></html>");
     }
 
     // Auto-sync the database is_admin flag for these specific emails to keep the DB clean
@@ -155,78 +152,112 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Control Center | MILELE</title>
+    <title>Control Center | MILELE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh;}
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.9); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(10px);}
-        .brand { font-size: 1.8rem; font-weight: 900; color: #8B5CF6; text-decoration: none; letter-spacing: -1px;}
-        .admin-badge { background: rgba(139, 92, 246, 0.2); color: #A78BFA; padding: 5px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: bold; border: 1px solid rgba(139, 92, 246, 0.4); margin-left: 10px; vertical-align: middle;}
-        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: bold; transition: 0.3s;}
-        .btn-glass:hover { background: rgba(255,255,255,0.1); }
-
-        .container { max-width: 1400px; margin: 40px auto; padding: 0 20px; }
-        .alert { padding: 15px; border-radius: 12px; margin-bottom: 30px; font-weight: bold;}
-        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
-        .alert-success { background: rgba(52,211,153,0.1); color: #34D399; border: 1px solid rgba(52,211,153,0.3); }
-
-        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 50px;}
-        .metric-card { background: linear-gradient(145deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0) 100%); border: 1px solid rgba(255,255,255,0.08); padding: 25px; border-radius: 20px; position: relative; overflow: hidden;}
-        .metric-title { font-size: 0.8rem; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;}
-        .metric-value { font-size: 2rem; font-weight: bold; color: #fff;}
-        .metric-value.revenue { color: #34D399; }
-        .metric-value.volume { color: #8B5CF6; }
-        .metric-value.escrow { color: #F59E0B; }
-
-        .table-section { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 24px; padding: 30px; margin-bottom: 40px;}
-        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;}
-        .table-title { font-size: 1.5rem; font-weight: bold; margin: 0; color: #fff;}
+        :root {
+            --indigo: #1A1040;
+            --indigo-mid: #2D1B69;
+            --amber: #F5A623;
+            --coral: #FF6B6B;
+            --mint: #00D4AA;
+            --chalk: #F7F5FF;
+            --slate: #8B7FA8;
+            --white: #ffffff;
+            --card-border: rgba(26,16,64,0.10);
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { background: var(--chalk); color: var(--indigo); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column;}
         
-        table { width: 100%; border-collapse: collapse; text-align: left; }
-        th { padding: 15px 10px; color: #888; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.1);}
-        td { padding: 15px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #ccc;}
-        tr:hover td { background: rgba(255,255,255,0.02); }
+        /* Navigation */
+        nav { background: rgba(247,245,255,0.94); backdrop-filter: blur(14px); border-bottom: 1px solid var(--card-border); position: sticky; top: 0; z-index: 100; padding: 0 5%; display: flex; align-items: center; justify-content: space-between; height: 70px; }
+        .nav-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; color: var(--indigo); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .logo-dot { width: 10px; height: 10px; background: var(--amber); border-radius: 50%; display: inline-block; }
+        .admin-badge { background: var(--indigo); color: var(--amber); padding: 4px 12px; border-radius: 50px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 10px; }
+        
+        .nav-actions { display: flex; gap: 12px; align-items: center; }
+        .btn-ghost { background: none; border: 1.5px solid var(--indigo); color: var(--indigo); padding: 9px 20px; border-radius: 50px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; text-decoration: none; }
+        .btn-ghost:hover { background: var(--indigo); color: var(--white); }
 
-        .status { padding: 5px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; display: inline-block;}
-        .s-active { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); }
-        .s-escrow { background: rgba(245,158,11,0.1); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3); }
-        .s-sold { background: rgba(107,114,128,0.1); color: #9CA3AF; border: 1px solid rgba(107,114,128,0.3); }
-        .s-frozen, .s-banned { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
+        .container { max-width: 1400px; margin: 40px auto; padding: 0 20px; flex-grow: 1; width: 100%;}
+        
+        /* Alerts */
+        .alert-error { background: rgba(255,107,107,0.1); color: var(--coral); border: 1px solid rgba(255,107,107,0.2); padding: 16px; border-radius: 12px; margin-bottom: 30px; font-size: 14px; text-align: center; font-weight: 600; }
+        .alert-success { background: rgba(0,212,170,0.1); color: #059669; border: 1px solid rgba(0,212,170,0.2); padding: 16px; border-radius: 12px; margin-bottom: 30px; font-size: 14px; text-align: center; font-weight: 600; }
 
-        .action-form { display: inline; margin: 0;}
-        .btn-action { padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; border: none; transition: 0.2s;}
-        
-        .btn-freeze, .btn-ban { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3);}
-        .btn-freeze:hover, .btn-ban:hover { background: #F87171; color: #000;}
-        
-        .btn-unfreeze, .btn-unban { background: rgba(107,114,128,0.2); color: #D1D5DB; border: 1px solid rgba(107,114,128,0.4);}
-        .btn-unfreeze:hover, .btn-unban:hover { background: #D1D5DB; color: #000;}
-        
-        .btn-delete { background: transparent; color: #888; border: 1px solid #444;}
-        .btn-delete:hover { background: #EF4444; color: #fff; border-color: #EF4444;}
+        /* Metrics Grid */
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 40px;}
+        .metric-card { background: var(--white); border: 1px solid var(--card-border); padding: 24px; border-radius: 20px; box-shadow: 0 10px 30px rgba(26,16,64,0.03); transition: transform 0.2s;}
+        .metric-card:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(26,16,64,0.08); }
+        .metric-title { font-size: 11px; color: var(--slate); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;}
+        .metric-value { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: var(--indigo);}
+        .metric-value.revenue { color: #059669; }
+        .metric-value.volume { color: var(--amber); }
 
-        .btn-force-pay { background: rgba(52,211,153,0.1); color: #34D399; border: 1px solid rgba(52,211,153,0.3);}
-        .btn-force-pay:hover { background: #34D399; color: #000;}
+        /* Table Sections */
+        .table-section { background: var(--white); border: 1px solid var(--card-border); border-radius: 24px; padding: 32px; margin-bottom: 40px; box-shadow: 0 12px 40px rgba(26,16,64,0.04); overflow-x: auto;}
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; border-bottom: 2px solid var(--card-border); padding-bottom: 16px;}
+        .table-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; margin: 0; color: var(--indigo);}
         
-        .btn-refund { background: rgba(245,158,11,0.1); color: #F59E0B; border: 1px solid rgba(245,158,11,0.3);}
-        .btn-refund:hover { background: #F59E0B; color: #000;}
+        table { width: 100%; border-collapse: collapse; text-align: left; min-width: 800px; }
+        th { padding: 16px 12px; color: var(--slate); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--card-border);}
+        td { padding: 16px 12px; border-bottom: 1px solid var(--card-border); color: var(--indigo); font-size: 14px;}
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: var(--chalk); }
+
+        /* Status Badges */
+        .status { padding: 6px 12px; border-radius: 50px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block;}
+        .s-active { background: var(--mint); color: var(--indigo); }
+        .s-escrow { background: var(--amber); color: var(--indigo); }
+        .s-sold { background: var(--slate); color: var(--white); }
+        .s-frozen, .s-banned { background: rgba(255,107,107,0.1); color: var(--coral); }
+        .s-admin { background: var(--indigo); color: var(--amber); }
+
+        /* Form Actions & Buttons */
+        .action-form { display: inline-flex; margin: 0;}
+        .btn-action { padding: 8px 16px; border-radius: 50px; font-size: 12px; font-weight: 700; cursor: pointer; border: none; transition: 0.2s; font-family: 'Inter', sans-serif;}
+        
+        /* Dangerous / Banning actions */
+        .btn-freeze, .btn-ban { background: rgba(255,107,107,0.1); color: var(--coral); }
+        .btn-freeze:hover, .btn-ban:hover { background: var(--coral); color: var(--white); }
+        .btn-delete { background: transparent; color: var(--slate); border: 1.5px solid var(--slate); }
+        .btn-delete:hover { border-color: var(--coral); color: var(--coral); }
+        
+        /* Restoring actions */
+        .btn-unfreeze, .btn-unban { background: var(--chalk); color: var(--indigo); border: 1.5px solid var(--card-border); }
+        .btn-unfreeze:hover, .btn-unban:hover { background: var(--indigo); color: var(--white); border-color: var(--indigo);}
+        
+        /* Escrow Enforcement actions */
+        .btn-force-pay { background: var(--mint); color: var(--indigo); box-shadow: 0 4px 10px rgba(0,212,170,0.2);}
+        .btn-force-pay:hover { transform: translateY(-1px); box-shadow: 0 6px 15px rgba(0,212,170,0.4); }
+        .btn-refund { background: var(--amber); color: var(--indigo); box-shadow: 0 4px 10px rgba(245,166,35,0.2);}
+        .btn-refund:hover { transform: translateY(-1px); box-shadow: 0 6px 15px rgba(245,166,35,0.4); }
+
+        /* Highlighted Escrow Table */
+        .escrow-highlight { border: 2px solid var(--amber); position: relative; }
+        .escrow-highlight::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(245,166,35,0.02); pointer-events: none; }
+        .pin-code { font-family: 'Syne', monospace; font-size: 16px; font-weight: 800; color: var(--amber); letter-spacing: 2px;}
+
+        footer { background: var(--indigo); color: rgba(255,255,255,0.5); padding: 40px 5%; text-align: center; font-size: 14px; margin-top: 40px;}
     </style>
 </head>
 <body>
 
-<nav class="nav-bar">
-    <div>
-        <a href="index.php" class="brand">MILELE</a>
-        <span class="admin-badge">ADMIN</span>
+<nav>
+    <div style="display:flex; align-items:center;">
+        <a href="index.php" class="nav-logo"><span class="logo-dot"></span>MILELE</a>
+        <span class="admin-badge">Control Center</span>
     </div>
     <div class="nav-actions">
-        <a href="profile.php" class="btn-glass">← Back to Profile</a>
+        <a href="profile.php" class="btn-ghost">← Back to Profile</a>
     </div>
 </nav>
 
 <div class="container">
     
-    <?php if($error) echo "<div class='alert alert-error'>$error</div>"; ?>
-    <?php if($success) echo "<div class='alert alert-success'>$success</div>"; ?>
+    <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
+    <?php if($success) echo "<div class='alert-success'>$success</div>"; ?>
 
     <div class="metrics-grid">
         <div class="metric-card">
@@ -239,30 +270,30 @@ try {
         </div>
         <div class="metric-card">
             <div class="metric-title">Active Escrows</div>
-            <div class="metric-value escrow"><?php echo $list_stats['active_escrows']; ?></div>
+            <div class="metric-value"><?php echo $list_stats['active_escrows']; ?></div>
         </div>
         <div class="metric-card">
             <div class="metric-title">Total Users / Frozen</div>
             <div class="metric-value">
                 <?php echo $user_stats['total_users']; ?> 
-                <span class="metric-title" style="color:#F87171; font-size:1rem;">/ <?php echo $user_stats['frozen_users']; ?></span>
+                <span style="color:var(--coral); font-size:16px;">/ <?php echo $user_stats['frozen_users']; ?></span>
             </div>
         </div>
         <div class="metric-card">
             <div class="metric-title">Live / Banned Items</div>
             <div class="metric-value">
                 <?php echo $list_stats['active_listings']; ?> 
-                <span class="metric-title" style="color:#F87171; font-size:1rem;">/ <?php echo $list_stats['banned_listings']; ?></span>
+                <span style="color:var(--coral); font-size:16px;">/ <?php echo $list_stats['banned_listings']; ?></span>
             </div>
         </div>
     </div>
 
-    <div class="table-section" style="border-color: rgba(245,158,11,0.3); background: radial-gradient(circle at top left, rgba(245,158,11,0.03), transparent 50%);">
-        <div class="table-header">
-            <h2 class="table-title" style="color: #F59E0B;">⚖️ Escrow Enforcement</h2>
+    <div class="table-section escrow-highlight">
+        <div class="table-header" style="border-bottom-color: rgba(245,166,35,0.2);">
+            <h2 class="table-title" style="color: var(--amber);">⚖️ Escrow Enforcement</h2>
         </div>
         <?php if(empty($escrow_tracker)): ?>
-            <div style="color: #666; text-align: center; padding: 20px;">No deals currently locked in escrow.</div>
+            <div style="color: var(--slate); text-align: center; padding: 20px; font-weight: 500;">No deals currently locked in escrow.</div>
         <?php else: ?>
             <table>
                 <thead>
@@ -278,14 +309,14 @@ try {
                 <tbody>
                     <?php foreach($escrow_tracker as $esc): ?>
                     <tr>
-                        <td>#<?php echo $esc['listing_id']; ?></td>
+                        <td style="font-weight: 600; color: var(--slate);">#<?php echo $esc['listing_id']; ?></td>
                         <td>
-                            <div style="color:#fff; font-weight:bold;"><?php echo htmlspecialchars($esc['title']); ?></div>
-                            <div style="color:#2DD4BF; font-size:0.85rem;">KES <?php echo number_format($esc['price'], 2); ?></div>
+                            <div style="font-weight:700; margin-bottom:4px;"><?php echo htmlspecialchars($esc['title']); ?></div>
+                            <div style="font-weight:600; font-size:13px; color:var(--slate);">KES <?php echo number_format($esc['price'], 2); ?></div>
                         </td>
-                        <td><?php echo htmlspecialchars($esc['seller_name']); ?></td>
-                        <td><?php echo htmlspecialchars($esc['buyer_name']); ?></td>
-                        <td style="font-family: monospace; color:#F59E0B; letter-spacing: 2px; font-weight:bold;"><?php echo htmlspecialchars($esc['escrow_pin']); ?></td>
+                        <td style="font-weight: 500;"><?php echo htmlspecialchars($esc['seller_name']); ?></td>
+                        <td style="font-weight: 500;"><?php echo htmlspecialchars($esc['buyer_name']); ?></td>
+                        <td class="pin-code"><?php echo htmlspecialchars($esc['escrow_pin']); ?></td>
                         <td>
                             <div style="display: flex; gap: 8px;">
                                 <form method="POST" class="action-form">
@@ -311,65 +342,63 @@ try {
         <div class="table-header">
             <h2 class="table-title">Marketplace Moderation</h2>
         </div>
-        <div style="overflow-x: auto;">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Title</th>
-                        <th>Price</th>
-                        <th>Seller</th>
-                        <th>Status</th>
-                        <th>Moderation Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($all_listings as $lst): ?>
-                    <tr>
-                        <td>#<?php echo $lst['listing_id']; ?></td>
-                        <td style="color:#fff; font-weight:bold;">
-                            <a href="item.php?id=<?php echo $lst['listing_id']; ?>" style="color:inherit; text-decoration:none;">
-                                <?php echo htmlspecialchars($lst['title']); ?> ↗
-                            </a>
-                        </td>
-                        <td>KES <?php echo number_format($lst['price'], 2); ?></td>
-                        <td><?php echo htmlspecialchars($lst['seller_name']); ?></td>
-                        <td>
-                            <?php 
-                                if($lst['listing_status'] === 'active') echo '<span class="status s-active">Active</span>';
-                                elseif($lst['listing_status'] === 'escrow') echo '<span class="status s-escrow">In Escrow</span>';
-                                elseif($lst['listing_status'] === 'sold') echo '<span class="status s-sold">Sold</span>';
-                                elseif($lst['listing_status'] === 'banned') echo '<span class="status s-banned">Banned</span>';
-                            ?>
-                        </td>
-                        <td>
-                            <div style="display: flex; gap: 8px;">
-                                <?php if($lst['listing_status'] === 'banned'): ?>
-                                    <form method="POST" class="action-form">
-                                        <input type="hidden" name="action" value="unban_listing">
-                                        <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
-                                        <button type="submit" class="btn-action btn-unban">Unban</button>
-                                    </form>
-                                <?php else: ?>
-                                    <form method="POST" class="action-form">
-                                        <input type="hidden" name="action" value="ban_listing">
-                                        <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
-                                        <button type="submit" class="btn-action btn-ban" onclick="return confirm('Ban this item? It will be hidden from the public feed.');">Ban</button>
-                                    </form>
-                                <?php endif; ?>
-                                
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Title</th>
+                    <th>Price</th>
+                    <th>Seller</th>
+                    <th>Status</th>
+                    <th>Moderation Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($all_listings as $lst): ?>
+                <tr>
+                    <td style="font-weight: 600; color: var(--slate);">#<?php echo $lst['listing_id']; ?></td>
+                    <td style="font-weight:700;">
+                        <a href="checkout.php?id=<?php echo $lst['listing_id']; ?>" style="color:inherit; text-decoration:none;">
+                            <?php echo htmlspecialchars($lst['title']); ?> ↗
+                        </a>
+                    </td>
+                    <td style="font-weight: 500;">KES <?php echo number_format($lst['price'], 2); ?></td>
+                    <td style="font-weight: 500;"><?php echo htmlspecialchars($lst['seller_name']); ?></td>
+                    <td>
+                        <?php 
+                            if($lst['listing_status'] === 'active') echo '<span class="status s-active">Active</span>';
+                            elseif($lst['listing_status'] === 'escrow') echo '<span class="status s-escrow">In Escrow</span>';
+                            elseif($lst['listing_status'] === 'sold') echo '<span class="status s-sold">Sold</span>';
+                            elseif($lst['listing_status'] === 'banned') echo '<span class="status s-banned">Banned</span>';
+                        ?>
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 8px;">
+                            <?php if($lst['listing_status'] === 'banned'): ?>
                                 <form method="POST" class="action-form">
-                                    <input type="hidden" name="action" value="delete_listing">
+                                    <input type="hidden" name="action" value="unban_listing">
                                     <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
-                                    <button type="submit" class="btn-action btn-delete" onclick="return confirm('Permanently wipe this listing?');">Delete</button>
+                                    <button type="submit" class="btn-action btn-unban">Unban</button>
                                 </form>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
+                            <?php else: ?>
+                                <form method="POST" class="action-form">
+                                    <input type="hidden" name="action" value="ban_listing">
+                                    <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
+                                    <button type="submit" class="btn-action btn-ban" onclick="return confirm('Ban this item? It will be hidden from the public feed.');">Ban</button>
+                                </form>
+                            <?php endif; ?>
+                            
+                            <form method="POST" class="action-form">
+                                <input type="hidden" name="action" value="delete_listing">
+                                <input type="hidden" name="target_listing" value="<?php echo $lst['listing_id']; ?>">
+                                <button type="submit" class="btn-action btn-delete" onclick="return confirm('Permanently wipe this listing from the database?');">Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 
     <div class="table-section">
@@ -389,18 +418,18 @@ try {
             <tbody>
                 <?php foreach($all_users as $u): ?>
                 <tr>
-                    <td style="color:#aaa; font-size: 0.9rem;"><?php echo htmlspecialchars($u['email']); ?></td>
-                    <td style="color:#fff; font-weight:bold;"><?php echo htmlspecialchars($u['full_name']); ?></td>
-                    <td><?php echo htmlspecialchars($u['university_name']); ?></td>
+                    <td style="color:var(--slate); font-weight: 500;"><?php echo htmlspecialchars($u['email']); ?></td>
+                    <td style="font-weight:700;"><?php echo htmlspecialchars($u['full_name']); ?></td>
+                    <td style="font-weight: 500;"><?php echo htmlspecialchars($u['university_name']); ?></td>
                     <td>
                         <?php 
                             if($u['account_state'] === 'frozen') echo '<span class="status s-frozen">Frozen</span>';
-                            elseif($u['account_state'] === 'admin') echo '<span class="status" style="background:rgba(139,92,246,0.2); color:#A78BFA; border:1px solid rgba(139,92,246,0.4);">Admin</span>';
+                            elseif($u['account_state'] === 'admin' || in_array(strtolower(trim($u['email'])), $allowed_admins)) echo '<span class="status s-admin">Admin</span>';
                             else echo '<span class="status s-active">Active</span>';
                         ?>
                     </td>
                     <td>
-                        <?php if($u['user_id'] != $my_id): ?>
+                        <?php if($u['user_id'] != $my_id && !in_array(strtolower(trim($u['email'])), $allowed_admins)): ?>
                             <form method="POST" class="action-form">
                                 <input type="hidden" name="action" value="toggle_user">
                                 <input type="hidden" name="target_user" value="<?php echo $u['user_id']; ?>">
@@ -409,11 +438,11 @@ try {
                                     <button type="submit" class="btn-action btn-unfreeze">Unfreeze</button>
                                 <?php else: ?>
                                     <input type="hidden" name="new_state" value="frozen">
-                                    <button type="submit" class="btn-action btn-freeze" onclick="return confirm('Freeze this user?');">Freeze</button>
+                                    <button type="submit" class="btn-action btn-freeze" onclick="return confirm('Freeze this user? They will not be able to trade.');">Freeze</button>
                                 <?php endif; ?>
                             </form>
                         <?php else: ?>
-                            <span style="color:#666; font-size:0.8rem;">(You)</span>
+                            <span style="color:var(--slate); font-size:12px; font-weight: 600;">(Protected)</span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -423,5 +452,10 @@ try {
     </div>
 
 </div>
+
+<footer>
+    © 2026 MILELE Platform Control.
+</footer>
+
 </body>
 </html>
