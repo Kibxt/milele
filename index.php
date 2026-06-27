@@ -538,7 +538,7 @@ function get_initials($name) {
       <h2 class="banner-title">Leaving campus soon?<br>Turn your stuff into <span class="hi">cash.</span></h2>
       <p class="banner-sub">Don't pack what you can sell — next year's intake is already looking.</p>
       <!-- DIRECT LINK TO SELL -->
-      <a href="create_listing.php" class="btn-amber-big">List Your Items Now →</a>
+      <a href="post_item.php" class="btn-amber-big">List Your Items Now →</a>
     </div>
     <div class="banner-countdown">
       <div class="countdown-block">

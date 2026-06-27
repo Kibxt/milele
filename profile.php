@@ -1,5 +1,5 @@
 <?php
-// MILELE - Private User Dashboard (Strict Email Admin Link)
+// MILELE - Private User Dashboard (Strict Email Admin Link + Premium UI)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 
@@ -98,6 +98,13 @@ try {
     $stmt_purchases->execute([$my_id]);
     $my_purchases = $stmt_purchases->fetchAll();
 } catch (PDOException $e) { }
+
+// Helper for Avatar Initials
+function get_initials($name) {
+    $words = explode(' ', $name);
+    if (count($words) >= 2) return strtoupper(substr($words[0], 0, 1) . substr($words[1], 0, 1));
+    return strtoupper(substr($name, 0, 2));
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -105,108 +112,148 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Dashboard | MILELE</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background: #050505; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; min-height: 100vh; display: flex; flex-direction: column;}
-        .nav-bar { display: flex; justify-content: space-between; align-items: center; padding: 20px 40px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(5,5,5,0.8); backdrop-filter: blur(20px); position: sticky; top: 0; z-index: 100;}
-        .brand { font-size: 1.8rem; font-weight: 800; color: #2DD4BF; text-decoration: none; letter-spacing: -1px;}
-        .nav-actions { display: flex; gap: 15px;}
-        .btn-glass { padding: 10px 20px; background: rgba(255,255,255,0.05); color: #fff; text-decoration: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; font-weight: bold; transition: 0.3s;}
-        .btn-glass:hover { background: rgba(255,255,255,0.1); }
-        .btn-red { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3);}
-        .btn-red:hover { background: #EF4444; color: #000; }
+        :root {
+            --indigo: #1A1040;
+            --indigo-mid: #2D1B69;
+            --amber: #F5A623;
+            --coral: #FF6B6B;
+            --mint: #00D4AA;
+            --chalk: #F7F5FF;
+            --slate: #8B7FA8;
+            --white: #ffffff;
+            --card-border: rgba(26,16,64,0.10);
+        }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body { background: var(--chalk); color: var(--indigo); font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* Navigation */
+        nav { background: rgba(247,245,255,0.94); backdrop-filter: blur(14px); border-bottom: 1px solid var(--card-border); position: sticky; top: 0; z-index: 100; padding: 0 5%; display: flex; align-items: center; justify-content: space-between; height: 70px; }
+        .nav-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; color: var(--indigo); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        .logo-dot { width: 10px; height: 10px; background: var(--amber); border-radius: 50%; display: inline-block; }
+        .nav-actions { display: flex; gap: 12px; align-items: center; }
         
-        .btn-admin { background: #8B5CF6; color: #fff; border: 1px solid #A78BFA; padding: 10px 20px; border-radius: 12px; font-weight: bold; text-decoration: none; transition: 0.3s;}
-        .btn-admin:hover { background: #A78BFA; color: #000;}
+        .btn-ghost { background: none; border: 1.5px solid var(--indigo); color: var(--indigo); padding: 9px 20px; border-radius: 50px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; text-decoration: none; }
+        .btn-ghost:hover { background: var(--indigo); color: var(--white); }
+        .btn-danger { background: none; border: 1.5px solid var(--coral); color: var(--coral); padding: 9px 20px; border-radius: 50px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; text-decoration: none; }
+        .btn-danger:hover { background: var(--coral); color: var(--white); }
+        .btn-admin { background: var(--indigo-mid); color: var(--white); border: none; padding: 9px 20px; border-radius: 50px; font-weight: 700; font-size: 13px; text-decoration: none; transition: 0.2s; box-shadow: 0 4px 12px rgba(45,27,105,0.2);}
+        .btn-admin:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(45,27,105,0.3);}
 
-        .profile-hero { padding: 60px 20px 40px; text-align: center; background: radial-gradient(circle at 50% -20%, rgba(45,212,191,0.1), transparent 50%); }
-        .avatar-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
-        .big-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 3px solid #2DD4BF; background: #111; display: flex; align-items: center; justify-content: center; font-size: 3rem; font-weight: bold; color: #2DD4BF;}
+        /* Alerts */
+        .alert-container { max-width: 1000px; margin: 30px auto 0; padding: 0 5%; width: 100%;}
+        .alert-error { background: rgba(255,107,107,0.1); color: var(--coral); border: 1px solid rgba(255,107,107,0.2); padding: 16px; border-radius: 12px; margin-bottom: 20px; font-size: 14px; text-align: center; font-weight: 600; }
+        .alert-success { background: rgba(0,212,170,0.1); color: #059669; border: 1px solid rgba(0,212,170,0.2); padding: 16px; border-radius: 12px; margin-bottom: 20px; font-size: 14px; text-align: center; font-weight: 600; }
+
+        /* Profile Hero Card */
+        .profile-hero { max-width: 1000px; margin: 30px auto 40px; padding: 40px 5%; width: 100%; background: var(--white); border: 1px solid var(--card-border); border-radius: 24px; text-align: center; box-shadow: 0 12px 40px rgba(26,16,64,0.04);}
+        .avatar-wrapper { position: relative; width: 100px; height: 100px; margin: 0 auto 20px; }
+        .big-avatar { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; background: var(--indigo); display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; color: var(--white); box-shadow: 0 8px 24px rgba(26,16,64,0.1);}
         
-        .profile-name { font-size: 2.5rem; margin: 0 0 10px 0; display: flex; align-items: center; justify-content: center; gap: 10px;}
-        .verified-tick { color: #3B82F6; font-size: 1.5rem; }
-        .profile-uni { color: #888; font-size: 1.1rem; margin-bottom: 30px; }
+        .profile-name { font-family: 'Syne', sans-serif; font-size: 32px; font-weight: 800; margin: 0 0 8px 0; color: var(--indigo); display: flex; align-items: center; justify-content: center; gap: 8px;}
+        .verified-tick { background: var(--mint); color: var(--indigo); font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 50px; letter-spacing: 0.05em; text-transform: uppercase; font-family: 'Inter', sans-serif;}
+        .profile-uni { color: var(--slate); font-size: 15px; margin-bottom: 30px; font-weight: 500;}
         
-        .trust-stats { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 30px;}
-        .stat-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); padding: 15px 25px; border-radius: 16px; min-width: 100px;}
-        .stat-num { font-size: 1.6rem; font-weight: bold; color: #fff; margin-bottom: 5px;}
-        .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 1px;}
+        .trust-stats { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap;}
+        .stat-box { background: var(--chalk); border: 1px solid var(--card-border); padding: 16px 24px; border-radius: 16px; min-width: 110px;}
+        .stat-num { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--indigo); margin-bottom: 4px;}
+        .stat-label { font-size: 11px; color: var(--slate); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;}
 
-        .alert { max-width: 800px; margin: 0 auto 20px; padding: 15px; border-radius: 12px; font-weight: bold; text-align: center;}
-        .alert-error { background: rgba(248,113,113,0.1); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
-        .alert-success { background: rgba(45,212,191,0.1); color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); }
-
-        .dashboard-container { max-width: 1200px; margin: 0 auto; padding: 0 20px 80px; width: 100%; box-sizing: border-box;}
-        .section-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px; margin-bottom: 30px; margin-top: 50px;}
-        .section-title { font-size: 1.5rem; margin: 0; color: #fff; display: flex; align-items: center; gap: 10px;}
-        .btn-new-item { padding: 10px 20px; background: #2DD4BF; color: #000; text-decoration: none; border-radius: 12px; font-weight: bold; transition: 0.2s;}
-        .btn-new-item:hover { background: #fff; }
-
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 30px; }
-        .card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; position: relative;}
+        /* Dashboard Container */
+        .dashboard-container { max-width: 1200px; margin: 0 auto; padding: 0 5% 80px; width: 100%; flex-grow: 1; }
+        .section-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--card-border); padding-bottom: 16px; margin-bottom: 30px; margin-top: 50px;}
+        .section-title { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--indigo); margin: 0;}
         
-        .status-badge { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase; z-index: 10;}
-        .status-active { color: #2DD4BF; border: 1px solid rgba(45,212,191,0.3); }
-        .status-escrow { color: #F59E0B; border: 1px solid rgba(245,158,11,0.3); }
-        .status-sold { color: #6B7280; border: 1px solid rgba(107,114,128,0.3); }
+        /* Direct link specifically to post_item.php */
+        .btn-new-item { padding: 10px 24px; background: var(--amber); color: var(--indigo); text-decoration: none; border-radius: 50px; font-weight: 800; font-size: 13px; transition: 0.2s; box-shadow: 0 4px 15px rgba(245,166,35,0.3);}
+        .btn-new-item:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,166,35,0.45); }
 
-        .card-img { width: 100%; height: 200px; object-fit: contain; background: #0a0a0a; border-bottom: 1px solid rgba(255,255,255,0.05);}
-        .card-body { padding: 20px; display: flex; flex-direction: column; flex-grow: 1; }
-        .card-title { font-size: 1.1rem; font-weight: bold; color: #fff; margin: 0 0 10px 0;}
-        .card-price { font-size: 1.3rem; color: #2DD4BF; font-weight: bold; margin-bottom: 15px;}
+        /* Grids & Cards */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 24px; }
+        .card { background: var(--white); border: 1px solid var(--card-border); border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; position: relative; box-shadow: 0 10px 30px rgba(26,16,64,0.03); transition: transform 0.3s;}
+        .card:hover { transform: translateY(-3px); box-shadow: 0 16px 40px rgba(26,16,64,0.08);}
         
-        .entity-label { font-size: 0.85rem; color: #888; margin-bottom: 10px;}
-        .entity-name { color: #fff; font-weight: bold; }
+        .status-badge { position: absolute; top: 16px; left: 16px; font-size: 10px; font-weight: 800; text-transform: uppercase; z-index: 10; padding: 6px 12px; border-radius: 50px; letter-spacing: 0.05em; box-shadow: 0 4px 12px rgba(26,16,64,0.1);}
+        .status-active { background: var(--mint); color: var(--indigo); }
+        .status-escrow { background: var(--amber); color: var(--indigo); }
+        .status-sold { background: var(--slate); color: var(--white); }
 
-        .escrow-action-box { background: rgba(245,158,11,0.05); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; padding: 15px; margin-top: auto;}
-        .escrow-input-group { display: flex; gap: 10px; margin-top: 10px;}
-        .escrow-input { flex-grow: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 1.1rem; text-align: center; outline: none;}
-        .escrow-input:focus { border-color: #F59E0B; }
-        .btn-release { background: #F59E0B; color: #000; border: none; padding: 10px 15px; border-radius: 8px; font-weight: bold; cursor: pointer;}
+        .card-img { width: 100%; height: 220px; object-fit: cover; border-bottom: 1px solid var(--card-border); background: var(--chalk);}
+        .card-body { padding: 24px; display: flex; flex-direction: column; flex-grow: 1; }
+        .card-title { font-size: 16px; font-weight: 700; color: var(--indigo); margin: 0 0 12px 0; line-height: 1.4;}
+        .card-price { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: var(--indigo); margin-bottom: 16px;}
         
-        .escrow-vault { background: rgba(45,212,191,0.05); border: 1px solid rgba(45,212,191,0.3); border-radius: 12px; padding: 15px; margin-top: auto;}
-        .vault-header { font-size: 0.85rem; color: #2DD4BF; font-weight: bold; margin-bottom: 10px; text-transform: uppercase;}
-        .pin-display-group { display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1);}
-        .pin-text { font-family: monospace; font-size: 1.5rem; font-weight: bold; color: #fff; flex-grow: 1; text-align: center; letter-spacing: 5px;}
-        .pin-hidden { filter: blur(6px); user-select: none;}
-        .btn-icon { background: rgba(255,255,255,0.1); border: none; color: #fff; border-radius: 8px; width: 35px; height: 35px; cursor: pointer; transition: 0.2s;}
-        .btn-icon:hover { background: #2DD4BF; color: #000;}
+        .entity-label { font-size: 13px; color: var(--slate); font-weight: 500;}
+        .entity-name { color: var(--indigo); font-weight: 700; }
 
-        .empty-state { text-align: center; padding: 40px; color: #666; background: rgba(255,255,255,0.02); border-radius: 20px; border: 1px dashed rgba(255,255,255,0.1);}
+        /* Action Boxes (Escrow & Vault) */
+        .escrow-action-box { background: var(--chalk); border: 1.5px dashed var(--amber); border-radius: 16px; padding: 20px; margin-top: 20px;}
+        .escrow-action-title { font-size: 12px; color: var(--indigo); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;}
+        .escrow-input-group { display: flex; gap: 10px;}
+        .escrow-input { flex-grow: 1; height: 44px; background: var(--white); border: 2px solid var(--card-border); color: var(--indigo); padding: 0 15px; border-radius: 12px; font-family: 'Inter', monospace; font-size: 16px; font-weight: 700; text-align: center; outline: none; transition: 0.2s; letter-spacing: 2px;}
+        .escrow-input:focus { border-color: var(--amber); box-shadow: 0 0 0 4px rgba(245,166,35,0.12);}
+        .btn-release { background: var(--amber); color: var(--indigo); border: none; padding: 0 20px; border-radius: 12px; font-weight: 800; cursor: pointer; transition: 0.2s;}
+        .btn-release:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(245,166,35,0.3);}
+        
+        .escrow-vault { background: var(--white); border: 1.5px solid var(--card-border); border-radius: 16px; padding: 20px; margin-top: 20px;}
+        .vault-header { font-size: 11px; color: var(--slate); font-weight: 800; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em;}
+        .pin-display-group { display: flex; align-items: center; gap: 10px; background: var(--chalk); padding: 10px 16px; border-radius: 12px; border: 1px solid var(--card-border);}
+        .pin-text { font-family: 'Syne', monospace; font-size: 20px; font-weight: 800; color: var(--indigo); flex-grow: 1; text-align: center; letter-spacing: 8px;}
+        .pin-hidden { filter: blur(6px); user-select: none; opacity: 0.7;}
+        .btn-icon { background: var(--white); border: 1px solid var(--card-border); color: var(--indigo); border-radius: 8px; width: 36px; height: 36px; cursor: pointer; transition: 0.2s; display: flex; align-items: center; justify-content: center; font-size: 16px;}
+        .btn-icon:hover { background: var(--amber); border-color: var(--amber);}
+
+        /* Empty State */
+        .empty-state { text-align: center; padding: 60px 20px; background: var(--white); border-radius: 24px; border: 2px dashed var(--card-border); grid-column: 1 / -1; }
+        .empty-state-icon { font-size: 40px; margin-bottom: 16px; opacity: 0.8;}
+        .empty-state h3 { color: var(--indigo); margin-bottom: 8px; font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800;}
+        .empty-state p { color: var(--slate); font-size: 14px; margin-bottom: 0;}
+
+        @media (max-width: 600px) {
+            .nav-actions { gap: 8px; }
+            .btn-ghost, .btn-danger, .btn-admin { padding: 8px 12px; font-size: 12px; }
+            .profile-hero { padding: 30px 20px; border-radius: 0; border-left: none; border-right: none;}
+            .grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
 
-<nav class="nav-bar">
-    <a href="index.php" class="brand">MILELE</a>
+<nav>
+    <a href="index.php" class="nav-logo"><span class="logo-dot"></span>MILELE</a>
     <div class="nav-actions">
         <?php if($is_admin_user): ?>
-            <a href="admin.php" class="btn-admin">⚙️ Admin Panel</a>
+            <a href="admin.php" class="btn-admin">Admin Panel</a>
         <?php endif; ?>
         
-        <a href="index.php" class="btn-glass">← Market Feed</a>
-        <a href="profile.php?action=logout" class="btn-glass btn-red">Logout</a>
+        <a href="index.php" class="btn-ghost">Market Feed</a>
+        <a href="profile.php?action=logout" class="btn-danger">Logout</a>
     </div>
 </nav>
 
-<header class="profile-hero">
-    <?php if($error) echo "<div class='alert alert-error'>$error</div>"; ?>
-    <?php if($success) echo "<div class='alert alert-success'>$success</div>"; ?>
+<div class="alert-container">
+    <?php if($error) echo "<div class='alert-error'>$error</div>"; ?>
+    <?php if($success) echo "<div class='alert-success'>$success</div>"; ?>
+</div>
 
+<header class="profile-hero">
     <div class="avatar-wrapper">
-        <?php if($user['profile_picture']): ?>
+        <?php if(!empty($user['profile_picture'])): ?>
             <img src="<?php echo htmlspecialchars($user['profile_picture']); ?>" class="big-avatar" alt="Profile">
         <?php else: ?>
-            <div class="big-avatar"><?php echo strtoupper(substr($user['full_name'], 0, 1)); ?></div>
+            <div class="big-avatar"><?php echo get_initials($user['full_name']); ?></div>
         <?php endif; ?>
     </div>
 
     <h1 class="profile-name">
         <?php echo htmlspecialchars($user['full_name']); ?>
-        <?php if($user['account_state'] === 'campus_verified'): ?>
-            <span class="verified-tick" title="Campus Verified User">✔️</span>
+        <?php if($user['account_state'] === 'campus_verified' || $user['is_verified']): ?>
+            <span class="verified-tick" title="Verified Campus User">Verified</span>
         <?php endif; ?>
     </h1>
-    <div class="profile-uni">🎓 <?php echo htmlspecialchars($user['university_name']); ?></div>
+    <div class="profile-uni"><?php echo htmlspecialchars($user['university_name']); ?></div>
 
     <div class="trust-stats">
         <div class="stat-box">
@@ -217,9 +264,9 @@ try {
             <div class="stat-num"><?php echo $following; ?></div>
             <div class="stat-label">Following</div>
         </div>
-        <div class="stat-box" style="border-color: rgba(45,212,191,0.3); background: rgba(45,212,191,0.05);">
-            <div class="stat-num" style="color: #2DD4BF;"><?php echo (int)$user['completed_escrows']; ?></div>
-            <div class="stat-label" style="color: #2DD4BF;">Deals Done</div>
+        <div class="stat-box" style="background: rgba(0,212,170,0.05); border-color: rgba(0,212,170,0.2);">
+            <div class="stat-num" style="color: var(--mint);"><?php echo (int)$user['completed_escrows']; ?></div>
+            <div class="stat-label">Deals Done</div>
         </div>
     </div>
 </header>
@@ -227,13 +274,14 @@ try {
 <main class="dashboard-container">
     
     <div class="section-header">
-        <h2 class="section-title">🛍️ My Purchases</h2>
+        <h2 class="section-title">My Purchases</h2>
     </div>
     
     <?php if (empty($my_purchases)): ?>
         <div class="empty-state">
-            <div style="font-size: 2rem; margin-bottom: 10px;">🛒</div>
-            You haven't bought anything yet.
+            <div class="empty-state-icon">🛍️</div>
+            <h3>No purchases yet</h3>
+            <p>Items you buy through the marketplace will appear here.</p>
         </div>
     <?php else: ?>
         <div class="grid">
@@ -241,7 +289,7 @@ try {
                 $img = json_decode($item['image_path'], true)[0] ?? $item['image_path'];
                 $is_sold = ($item['listing_status'] === 'sold');
             ?>
-                <div class="card" style="<?php echo $is_sold ? 'opacity: 0.6;' : ''; ?>">
+                <div class="card" style="<?php echo $is_sold ? 'opacity: 0.7;' : ''; ?>">
                     <div class="status-badge <?php echo $is_sold ? 'status-sold' : 'status-active'; ?>">
                         <?php echo $is_sold ? 'Complete' : 'Pending Delivery'; ?>
                     </div>
@@ -252,12 +300,12 @@ try {
                         
                         <?php if(!$is_sold && $item['escrow_pin']): ?>
                             <div class="escrow-vault">
-                                <div class="vault-header">Your Transaction PIN</div>
+                                <div class="vault-header">Your Delivery PIN</div>
                                 <div class="pin-display-group">
                                     <div class="pin-text pin-hidden" id="pin_<?php echo $item['listing_id']; ?>"><?php echo htmlspecialchars($item['escrow_pin']); ?></div>
                                     <button class="btn-icon" onclick="togglePin('pin_<?php echo $item['listing_id']; ?>')" title="Reveal PIN">👁️</button>
                                 </div>
-                                <div style="font-size: 0.75rem; color: #888; margin-top: 10px;">Give this PIN to the seller only after inspecting the item.</div>
+                                <div style="font-size: 11px; color: var(--slate); margin-top: 12px; line-height: 1.4;">Give this PIN to the seller only after you have inspected and received the item.</div>
                             </div>
                         <?php endif; ?>
                     </div>
@@ -267,11 +315,15 @@ try {
     <?php endif; ?>
 
     <div class="section-header">
-        <h2 class="section-title">🔐 Pending Escrow Sales</h2>
+        <h2 class="section-title">Pending Escrow Sales</h2>
     </div>
 
     <?php if (empty($pending_sales)): ?>
-        <div class="empty-state">No items are currently locked in Escrow.</div>
+        <div class="empty-state">
+            <div class="empty-state-icon">🔒</div>
+            <h3>No locked transactions</h3>
+            <p>When a buyer purchases your item, the funds are held safely here until delivery.</p>
+        </div>
     <?php else: ?>
         <div class="grid">
             <?php foreach ($pending_sales as $item): 
@@ -282,13 +334,14 @@ try {
                     <img src="<?php echo htmlspecialchars($img); ?>" class="card-img" alt="Item">
                     <div class="card-body">
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
-                        <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
+                        <div class="card-price">KES <?php echo number_format($item['price']); ?></div>
                         <div class="entity-label">Buyer: <span class="entity-name"><?php echo htmlspecialchars($item['buyer_name']); ?></span></div>
                         
                         <form method="POST" class="escrow-action-box">
                             <input type="hidden" name="action" value="release_escrow">
                             <input type="hidden" name="listing_id" value="<?php echo $item['listing_id']; ?>">
-                            <div style="font-size: 0.85rem; color: #F59E0B; font-weight: bold;">Enter Buyer's PIN to Release Funds:</div>
+                            <div class="escrow-action-title">Verify Delivery</div>
+                            <div style="font-size: 13px; color: var(--slate); margin-bottom: 12px;">Enter the 4-digit PIN from the buyer to release your funds.</div>
                             <div class="escrow-input-group">
                                 <input type="text" name="entered_pin" class="escrow-input" maxlength="4" placeholder="XXXX" required autocomplete="off">
                                 <button type="submit" class="btn-release">Release</button>
@@ -301,12 +354,16 @@ try {
     <?php endif; ?>
 
     <div class="section-header">
-        <h2 class="section-title">📦 Active Inventory</h2>
+        <h2 class="section-title">Active Inventory</h2>
         <a href="post_item.php" class="btn-new-item">+ List New Item</a>
     </div>
 
     <?php if (empty($active_listings)): ?>
-        <div class="empty-state">You have no active items on the market.</div>
+        <div class="empty-state">
+            <div class="empty-state-icon">📦</div>
+            <h3>Your shop is empty</h3>
+            <p>You have no active items on the market right now.</p>
+        </div>
     <?php else: ?>
         <div class="grid">
             <?php foreach ($active_listings as $item): 
@@ -317,7 +374,10 @@ try {
                     <img src="<?php echo htmlspecialchars($img); ?>" class="card-img" alt="Item">
                     <div class="card-body">
                         <h3 class="card-title"><?php echo htmlspecialchars($item['title']); ?></h3>
-                        <div class="card-price">KES <?php echo number_format($item['price'], 2); ?></div>
+                        <div class="card-price">KES <?php echo number_format($item['price']); ?></div>
+                        <div class="entity-label" style="margin-top: auto; padding-top: 16px; border-top: 1px solid var(--card-border);">
+                            Posted on <?php echo date('M d, Y', strtotime($item['created_at'])); ?>
+                        </div>
                     </div>
                 </div>
             <?php endforeach; ?>
