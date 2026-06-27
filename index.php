@@ -1,5 +1,5 @@
 <?php
-// MILELE - Premium Global Feed (With Profile Pictures & Auto-Patch)
+// MILELE - Premium Global Feed (With Profile Pictures, Galleries & Auto-Patch)
 
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require 'db.php';
@@ -15,7 +15,9 @@ try { $pdo->exec("ALTER TABLE users ADD COLUMN profile_picture VARCHAR(255) DEFA
 
 // 🔔 UNREAD MESSAGE TRACKER
 $unread_count = 0;
-if (isset($_SESSION['user_id'])) {
+$is_logged_in = isset($_SESSION['user_id']);
+
+if ($is_logged_in) {
     try {
         $stmt_msg = $pdo->prepare("SELECT COUNT(*) FROM messages WHERE receiver_id = :uid AND is_read = 0");
         $stmt_msg->execute([':uid' => $_SESSION['user_id']]);
@@ -49,7 +51,6 @@ try {
     $items = $stmt->fetchAll();
 
 } catch (PDOException $e) {
-    // UNMASKED ERROR: If it fails again, it will tell us exactly why.
     die("<div style='background:#1A1040; color:#FF6B6B; padding:50px; text-align:center; font-family: sans-serif;'><strong>System Error Loading Feed:</strong> " . htmlspecialchars($e->getMessage()) . "</div>");
 }
 
@@ -107,6 +108,8 @@ function get_initials($name) {
   .btn-ghost:hover { background: var(--indigo); color: var(--white); }
   .btn-primary { background: var(--amber); border: none; color: var(--indigo); padding: 10px 24px; border-radius: 50px; font-size: 13px; font-weight: 800; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; box-shadow: 0 4px 15px rgba(245,166,35,0.3); text-decoration: none;}
   .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,166,35,0.45); }
+  .btn-danger { background: none; border: 1.5px solid var(--coral); color: var(--coral); padding: 9px 20px; border-radius: 50px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; text-decoration: none;}
+  .btn-danger:hover { background: var(--coral); color: var(--white); }
 
   /* Premium Unread Badge */
   .notif-badge { position: absolute; top: -6px; right: -6px; background: var(--coral); color: var(--white); font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 10px; border: 2px solid var(--chalk); animation: pulse-coral 2s infinite; pointer-events: none;}
@@ -135,7 +138,27 @@ function get_initials($name) {
   .hero-ctas { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 50px; }
   .btn-hero { background: var(--amber); border: none; color: var(--indigo); padding: 14px 30px; border-radius: 50px; font-size: 15px; font-weight: 800; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; box-shadow: 0 4px 20px rgba(245,166,35,0.4); text-decoration: none;}
   .btn-hero:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(245,166,35,0.55); }
+  .btn-hero-ghost { background: rgba(255,255,255,0.08); border: 1.5px solid rgba(255,255,255,0.25); color: var(--white); padding: 14px 30px; border-radius: 50px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; text-decoration: none;}
+  .btn-hero-ghost:hover { background: rgba(255,255,255,0.15); }
   
+  .hero-right { position: absolute; right: 5%; bottom: 0; width: 420px; z-index: 2; }
+  .hero-card-stack { position: relative; height: 420px; }
+  .hero-card { position: absolute; background: var(--white); border-radius: 20px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,0.35); }
+  .hero-card.main { width: 260px; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 3; }
+  .hero-card.left { width: 200px; bottom: 30px; left: 0; z-index: 2; transform: rotate(-5deg); opacity: 0.9; }
+  .hero-card.right { width: 200px; bottom: 30px; right: 0; z-index: 2; transform: rotate(5deg); opacity: 0.9; }
+  .hero-card img { width: 100%; height: 160px; object-fit: cover; display: block; }
+  .hero-card-body { padding: 12px 14px; }
+  .hero-card-cat { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--slate); margin-bottom: 4px; }
+  .hero-card-title { font-size: 14px; font-weight: 600; color: var(--indigo); line-height: 1.3; }
+  .hero-card-price { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; color: var(--coral); margin-top: 6px; }
+  .hero-card-badge { position: absolute; top: 10px; left: 10px; background: var(--mint); color: var(--indigo); font-size: 10px; font-weight: 800; letter-spacing: 0.05em; padding: 3px 8px; border-radius: 50px; }
+
+  /* Trust Bar */
+  .trust-bar { background: var(--indigo); padding: 24px 5%; display: flex; justify-content: center; gap: 50px; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.05);}
+  .trust-item { display: flex; align-items: center; gap: 10px; color: rgba(255,255,255,0.6); font-size: 13px; font-weight: 500; }
+  .trust-icon { font-size: 20px; }
+
   /* Search & Filters */
   .search-section { background: var(--white); padding: 40px 5%; border-bottom: 1px solid var(--card-border); }
   .search-wrap { max-width: 700px; margin: 0 auto; position: relative; display: flex; gap: 10px;}
@@ -149,11 +172,19 @@ function get_initials($name) {
   .pill { background: var(--chalk); border: 1.5px solid var(--card-border); color: var(--indigo); font-size: 13px; font-weight: 600; padding: 8px 20px; border-radius: 50px; cursor: pointer; transition: all 0.2s; white-space: nowrap; text-decoration: none;}
   .pill:hover, .pill.active { background: var(--indigo); color: var(--white); border-color: var(--indigo); }
 
-  /* Listings Grid */
-  .listings-section { padding: 60px 5%; background: var(--chalk); flex-grow: 1;}
+  /* Categories Section */
+  .categories-section { padding: 60px 5%; background: var(--chalk); }
   .section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 32px; }
   .section-title { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--indigo); }
+  .section-link { color: var(--amber); font-size: 13px; font-weight: 600; text-decoration: none; }
+  .category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  .cat-card { background: var(--white); border: 1.5px solid var(--card-border); border-radius: 16px; padding: 22px 16px; text-align: center; cursor: pointer; transition: all 0.25s; text-decoration: none; color: var(--indigo); display: block; }
+  .cat-card:hover { border-color: var(--amber); transform: translateY(-3px); box-shadow: 0 8px 24px rgba(245,166,35,0.15); }
+  .cat-icon { font-size: 32px; margin-bottom: 10px; display: block; }
+  .cat-name { font-size: 13px; font-weight: 600; }
   
+  /* Listings Grid */
+  .listings-section { padding: 60px 5%; background: var(--chalk); flex-grow: 1;}
   .listings-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
   .listing-card { background: var(--white); border: 1px solid var(--card-border); border-radius: 20px; overflow: hidden; transition: all 0.3s; cursor: pointer; position: relative; display: flex; flex-direction: column; text-decoration: none;}
   .listing-card:hover { border-color: var(--amber); transform: translateY(-4px); box-shadow: 0 16px 40px rgba(26,16,64,0.08); }
@@ -189,7 +220,7 @@ function get_initials($name) {
   .empty-state p { color: var(--slate); font-size: 15px; margin-bottom: 24px;}
 
   /* Semester Sale Banner */
-  .semester-wrap { padding: 60px 5%; background: var(--white); }
+  .semester-wrap { padding: 60px 5% 0; background: var(--white); }
   .semester-banner { background: var(--indigo); border-radius: 24px; padding: 50px 6%; display: flex; align-items: center; justify-content: space-between; gap: 30px; overflow: hidden; position: relative; flex-wrap: wrap; }
   .semester-banner::before { content: ''; position: absolute; width: 300px; height: 300px; border-radius: 50%; background: rgba(245,166,35,0.1); top: -100px; right: 100px; pointer-events: none; }
   .banner-tag { display: inline-block; background: rgba(245,166,35,0.2); color: var(--amber); font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 6px 14px; border-radius: 50px; margin-bottom: 16px; }
@@ -198,6 +229,33 @@ function get_initials($name) {
   .banner-sub { font-size: 15px; color: rgba(255,255,255,0.6); max-width: 420px; line-height: 1.6; margin-bottom: 28px; }
   .btn-amber-big { background: var(--amber); border: none; color: var(--indigo); padding: 14px 32px; border-radius: 50px; font-size: 15px; font-weight: 800; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s; display: inline-block; text-decoration: none;}
   .btn-amber-big:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245,166,35,0.45); }
+  
+  .banner-countdown { display: flex; gap: 16px; position: relative; z-index: 1; flex-wrap: wrap; }
+  .countdown-block { background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; width: 70px; text-align: center; padding: 12px 8px; }
+  .countdown-num { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--white); }
+  .countdown-label { font-size: 10px; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.07em; }
+
+  /* How it Works */
+  .how-section { padding: 80px 5%; background: var(--white); }
+  .steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 24px; margin-top: 40px; }
+  .step-card { background: var(--chalk); border: 1.5px solid var(--card-border); border-radius: 20px; padding: 28px 24px; transition: all 0.3s; }
+  .step-card:hover { border-color: var(--amber); transform: translateY(-4px); }
+  .step-num { font-family: 'Syne', sans-serif; font-size: 40px; font-weight: 800; color: var(--amber); margin-bottom: 16px; opacity: 0.7; }
+  .step-icon { font-size: 28px; margin-bottom: 12px; }
+  .step-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--indigo); margin-bottom: 10px; }
+  .step-desc { font-size: 14px; color: var(--slate); line-height: 1.6; }
+
+  /* Testimonials */
+  .testimonials-section { padding: 20px 5% 80px; background: var(--white); }
+  .testimonials-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; margin-top: 40px; }
+  .testimonial-card { background: var(--chalk); border: 1.5px solid var(--card-border); border-radius: 18px; padding: 24px; transition: all 0.3s; }
+  .testimonial-card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px rgba(26,16,64,0.08); }
+  .testimonial-stars { color: var(--amber); font-size: 14px; margin-bottom: 12px; }
+  .testimonial-text { font-size: 14px; line-height: 1.65; color: var(--indigo); margin-bottom: 20px; font-style: italic; }
+  .testimonial-author { display: flex; align-items: center; gap: 10px; }
+  .author-avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--white); flex-shrink: 0; }
+  .author-name { font-size: 14px; font-weight: 600; color: var(--indigo); }
+  .author-course { font-size: 12px; color: var(--slate); }
 
   /* Sell CTA */
   .sell-cta { padding: 0 5% 80px; background: var(--white); }
@@ -208,49 +266,75 @@ function get_initials($name) {
   .sell-cta-actions { display: flex; gap: 12px; flex-wrap: wrap; }
   .btn-dark { background: var(--indigo); color: var(--white); padding: 14px 32px; border-radius: 50px; font-size: 15px; font-weight: 800; text-decoration: none; transition: all 0.2s;}
   .btn-dark:hover { background: var(--indigo-mid); transform: translateY(-1px); }
+  .btn-outline-dark { background: transparent; color: var(--indigo); border: 2px solid var(--indigo); padding: 14px 32px; border-radius: 50px; font-size: 15px; font-weight: 700; cursor: pointer; font-family: 'Inter', sans-serif; transition: all 0.2s; text-decoration: none;}
+  .btn-outline-dark:hover { background: var(--indigo); color: var(--white); }
 
   /* Footer */
-  footer { background: var(--indigo); color: rgba(255,255,255,0.5); padding: 60px 5% 30px; text-align: center;}
-  .footer-brand-logo { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--white); margin-bottom: 10px; }
+  footer { background: var(--indigo); color: rgba(255,255,255,0.5); padding: 60px 5% 30px; }
+  .footer-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; margin-bottom: 50px; }
+  .footer-brand-logo { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--white); margin-bottom: 14px; }
+  .footer-brand p { font-size: 14px; line-height: 1.65; max-width: 240px; }
+  .footer-social { display: flex; gap: 10px; margin-top: 20px; }
+  .social-btn { width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); display: flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; transition: all 0.2s; color: rgba(255,255,255,0.6); }
+  .social-btn:hover { background: var(--amber); color: var(--indigo); }
+  .footer-col h4 { font-size: 13px; font-weight: 700; color: var(--white); letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 18px; }
+  .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .footer-col ul li a { color: rgba(255,255,255,0.45); font-size: 13px; text-decoration: none; transition: color 0.2s; }
+  .footer-col ul li a:hover { color: var(--amber); }
+  .footer-bottom { border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+  .footer-bottom a { color: var(--amber); text-decoration: none; }
   
   .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.6s ease, transform 0.6s ease; }
   .reveal.visible { opacity: 1; transform: none; }
 
+  @media (max-width: 900px) { .hero-right { display: none; } .footer-grid { grid-template-columns: 1fr 1fr; } }
   @media (max-width: 768px) {
     .search-wrap { flex-direction: column; }
     .search-btn { width: 100%; }
     .nav-links { display: none; }
+    .footer-grid { grid-template-columns: 1fr; } 
+    .sell-cta-inner { padding: 32px 24px; } 
+    .trust-bar { gap: 20px; }
   }
 </style>
 </head>
 <body>
 
+<!-- TICKER -->
 <div class="ticker-bar" aria-hidden="true">
   <div class="ticker-inner">
     <span>MacBook Pro 2022 — KES 85,000</span>
     <span>Physics Textbook Bundle — KES 1,200</span>
     <span>Mini Fridge (barely used) — KES 4,500</span>
     <span>Graphic Calculator TI-84 — KES 3,200</span>
+    <span>Dorm Desk Chair — KES 2,800</span>
+    <span>iPhone 14 — KES 38,000</span>
     <span>Semester End Sale — All items reduced!</span>
   </div>
 </div>
 
+<!-- NAVIGATION -->
 <nav>
   <a href="index.php" class="nav-logo"><span class="logo-dot"></span>MILELE</a>
   <ul class="nav-links">
     <li><a href="#browse">Browse Feed</a></li>
+    <li><a href="#categories">Categories</a></li>
+    <li><a href="#how">How it works</a></li>
+    <!-- DIRECT LINK TO SELL -->
     <li><a href="create_listing.php">Sell</a></li>
   </ul>
   <div class="nav-right">
     <?php if ($is_logged_in): ?>
-        <a href="inbox.php" class="btn-ghost">
+        <a href="inbox.php" class="btn-ghost" style="border: none;">
             Inbox
             <?php if($unread_count > 0): ?>
                 <span class="notif-badge"><?php echo $unread_count; ?></span>
             <?php endif; ?>
         </a>
         <a href="profile.php" class="btn-ghost">Dashboard</a>
+        <!-- DIRECT LINK TO SELL -->
         <a href="create_listing.php" class="btn-primary">+ Post Listing</a>
+        <a href="logout.php" class="btn-danger">Log Out</a>
     <?php else: ?>
         <a href="login.php" class="btn-ghost">Log In</a>
         <a href="register.php" class="btn-primary">Sign Up</a>
@@ -258,6 +342,7 @@ function get_initials($name) {
   </div>
 </nav>
 
+<!-- TOAST ALERT FOR NEW MESSAGES -->
 <?php if($unread_count > 0): ?>
     <div class="toast-alert" id="msgToast">
         <div class="toast-icon">💬</div>
@@ -273,6 +358,7 @@ function get_initials($name) {
     </script>
 <?php endif; ?>
 
+<!-- HERO -->
 <section class="hero">
   <div class="hero-bg-circle c1"></div>
   <div class="hero-bg-circle c2"></div>
@@ -282,11 +368,53 @@ function get_initials($name) {
     <p class="hero-sub">Buy, sell, and trade safely within your university community. No external strangers. Zero platform fees.</p>
     <div class="hero-ctas">
       <a href="#browse" class="btn-hero">Browse Deals →</a>
-      <a href="create_listing.php" class="btn-primary" style="padding: 16px 30px; font-size: 15px;">Sell Something</a>
+      <!-- DIRECT LINK TO SELL -->
+      <a href="create_listing.php" class="btn-hero-ghost">Sell Something</a>
+    </div>
+  </div>
+  <div class="hero-right">
+    <div class="hero-card-stack">
+      <div class="hero-card left">
+        <img src="https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80" alt="Textbooks">
+        <div class="hero-card-body">
+          <div class="hero-card-cat">Textbooks</div>
+          <div class="hero-card-title">Calculus 10th Edition</div>
+          <div class="hero-card-price">KES 1,200</div>
+        </div>
+        <div class="hero-card-badge">Good</div>
+      </div>
+      <div class="hero-card main">
+        <img src="https://images.unsplash.com/photo-1517336714731-489689fd1ca4?w=400&q=80" alt="MacBook">
+        <div class="hero-card-body">
+          <div class="hero-card-cat">Electronics</div>
+          <div class="hero-card-title">MacBook Pro M1 — 2021</div>
+          <div class="hero-card-price">KES 85,000</div>
+        </div>
+        <div class="hero-card-badge">Verified ✓</div>
+      </div>
+      <div class="hero-card right">
+        <img src="https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=400&q=80" alt="Sofa">
+        <div class="hero-card-body">
+          <div class="hero-card-cat">Furniture</div>
+          <div class="hero-card-title">Study Desk + Chair</div>
+          <div class="hero-card-price">KES 5,500</div>
+        </div>
+        <div class="hero-card-badge">New</div>
+      </div>
     </div>
   </div>
 </section>
 
+<!-- TRUST BAR -->
+<div class="trust-bar">
+  <div class="trust-item"><span class="trust-icon">🎓</span> Student-verified profiles</div>
+  <div class="trust-item"><span class="trust-icon">🔒</span> Safe campus meetups</div>
+  <div class="trust-item"><span class="trust-icon">💬</span> In-app messaging</div>
+  <div class="trust-item"><span class="trust-icon">⭐</span> Seller ratings system</div>
+  <div class="trust-item"><span class="trust-icon">🚫</span> Zero platform fees</div>
+</div>
+
+<!-- SEARCH & FILTERS -->
 <section class="search-section" id="browse">
   <form action="index.php" method="GET" class="search-wrap reveal">
     <?php if($category): ?><input type="hidden" name="category" value="<?php echo htmlspecialchars($category); ?>"><?php endif; ?>
@@ -307,6 +435,25 @@ function get_initials($name) {
   </div>
 </section>
 
+<!-- CATEGORIES GRID -->
+<section class="categories-section reveal" id="categories">
+  <div class="section-header">
+    <h2 class="section-title">Browse by Category</h2>
+    <a href="index.php" class="section-link">View all →</a>
+  </div>
+  <div class="category-grid">
+    <a href="index.php?category=Textbooks" class="cat-card"><span class="cat-icon">📚</span><div class="cat-name">Textbooks</div></a>
+    <a href="index.php?category=Electronics" class="cat-card"><span class="cat-icon">💻</span><div class="cat-name">Electronics</div></a>
+    <a href="index.php?category=Furniture" class="cat-card"><span class="cat-icon">🛋️</span><div class="cat-name">Furniture</div></a>
+    <a href="index.php?category=Clothes" class="cat-card"><span class="cat-icon">👗</span><div class="cat-name">Clothes</div></a>
+    <a href="index.php?category=Kitchen" class="cat-card"><span class="cat-icon">🍳</span><div class="cat-name">Kitchen</div></a>
+    <a href="index.php?category=Gaming" class="cat-card"><span class="cat-icon">🎮</span><div class="cat-name">Gaming</div></a>
+    <a href="index.php?category=Sports" class="cat-card"><span class="cat-icon">🏋️</span><div class="cat-name">Sports</div></a>
+    <a href="index.php?category=Other" class="cat-card"><span class="cat-icon">📦</span><div class="cat-name">Other</div></a>
+  </div>
+</section>
+
+<!-- LISTINGS GRID (DYNAMIC) -->
 <section class="listings-section reveal">
   <div class="section-header">
     <h2 class="section-title">Fresh Listings</h2>
@@ -316,7 +463,12 @@ function get_initials($name) {
       <div class="empty-state">
           <h3>No items found</h3>
           <p>We couldn't find any listings matching your current search or category.</p>
-          <a href="index.php" class="btn-ghost" style="border-color: var(--amber); color: var(--amber);">Clear Filters</a>
+          <?php if(!empty($search) || !empty($category)): ?>
+              <a href="index.php" class="btn-ghost" style="border-color: var(--amber); color: var(--amber);">Clear Filters</a>
+          <?php else: ?>
+              <!-- DIRECT LINK TO SELL -->
+              <a href="create_listing.php" class="btn-primary" style="display:inline-block; padding: 12px 24px;">Post a Listing</a>
+          <?php endif; ?>
       </div>
   <?php else: ?>
       <div class="listings-grid">
@@ -329,6 +481,7 @@ function get_initials($name) {
                   $images[] = !empty($item['image_path']) ? $item['image_path'] : 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500&q=80';
               }
           ?>
+              <!-- REDIRECTING TO CHECKOUT/DETAILS -->
               <a href="checkout.php?id=<?php echo $item['listing_id']; ?>" class="listing-card">
                   <div class="gallery-container">
                       <div class="floating-badges">
@@ -377,17 +530,113 @@ function get_initials($name) {
   <?php endif; ?>
 </section>
 
+<!-- SEMESTER SALE BANNER & COUNTDOWN -->
 <div class="semester-wrap reveal">
   <div class="semester-banner">
     <div>
       <div class="banner-tag">⏰ Semester End Sale</div>
       <h2 class="banner-title">Leaving campus soon?<br>Turn your stuff into <span class="hi">cash.</span></h2>
       <p class="banner-sub">Don't pack what you can sell — next year's intake is already looking.</p>
+      <!-- DIRECT LINK TO SELL -->
       <a href="create_listing.php" class="btn-amber-big">List Your Items Now →</a>
+    </div>
+    <div class="banner-countdown">
+      <div class="countdown-block">
+        <div class="countdown-num" id="cd-days">14</div>
+        <div class="countdown-label">Days</div>
+      </div>
+      <div class="countdown-block">
+        <div class="countdown-num" id="cd-hrs">08</div>
+        <div class="countdown-label">Hours</div>
+      </div>
+      <div class="countdown-block">
+        <div class="countdown-num" id="cd-min">42</div>
+        <div class="countdown-label">Mins</div>
+      </div>
+      <div class="countdown-block">
+        <div class="countdown-num" id="cd-sec">17</div>
+        <div class="countdown-label">Secs</div>
+      </div>
     </div>
   </div>
 </div>
 
+<!-- HOW IT WORKS -->
+<section class="how-section reveal" id="how">
+  <div class="section-header">
+    <h2 class="section-title">How MILELE works</h2>
+  </div>
+  <div class="steps-grid">
+    <div class="step-card">
+      <div class="step-num">01</div>
+      <div class="step-icon">🎓</div>
+      <div class="step-title">Sign up securely</div>
+      <p class="step-desc">Verify your student status with your campus email or Google account. Your profile is trusted from day one.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">02</div>
+      <div class="step-icon">📸</div>
+      <div class="step-title">Snap a photo, set your price</div>
+      <p class="step-desc">Listing takes under 2 minutes. Add photos, write a quick description, choose a price, and you're live.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">03</div>
+      <div class="step-icon">💳</div>
+      <div class="step-title">Secure M-Pesa Checkout</div>
+      <p class="step-desc">Buyers pay securely through our M-Pesa escrow integration. Funds are held safely until delivery.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-num">04</div>
+      <div class="step-icon">🤝</div>
+      <div class="step-title">Meet & Handover</div>
+      <p class="step-desc">Meet at a safe campus location, hand over the item, and the escrow releases the funds directly to you.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="testimonials-section reveal">
+  <div class="section-header">
+    <h2 class="section-title">Students love MILELE</h2>
+  </div>
+  <div class="testimonials-grid">
+    <div class="testimonial-card">
+      <div class="testimonial-stars">★★★★★</div>
+      <p class="testimonial-text">"Sold my entire dorm setup in one week at the end of 2nd year. Made over KES 18,000. Way better than lugging everything home or letting it rot in storage."</p>
+      <div class="testimonial-author">
+        <div class="author-avatar" style="background:#6366f1;">PM</div>
+        <div>
+          <div class="author-name">Purity M.</div>
+          <div class="author-course">BSc Computer Science, UoN</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial-card">
+      <div class="testimonial-stars">★★★★★</div>
+      <p class="testimonial-text">"Found all my 1st year textbooks for less than half the bookshop price. Saved me like KES 8,000. Absolute lifesaver when you're a broke fresher."</p>
+      <div class="testimonial-author">
+        <div class="author-avatar" style="background:#14b8a6;">DO</div>
+        <div>
+          <div class="author-name">David O.</div>
+          <div class="author-course">BCom Finance, Strathmore</div>
+        </div>
+      </div>
+    </div>
+    <div class="testimonial-card">
+      <div class="testimonial-stars">★★★★☆</div>
+      <p class="testimonial-text">"The verified student profile thing is what sold me on this. I knew I was buying from a real student on campus — not some random internet stranger. Felt totally safe."</p>
+      <div class="testimonial-author">
+        <div class="author-avatar" style="background:#ec4899;">FN</div>
+        <div>
+          <div class="author-name">Fatuma N.</div>
+          <div class="author-course">BA Psychology, USIU</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SELL CTA -->
 <section class="sell-cta reveal">
   <div class="sell-cta-inner">
     <div>
@@ -399,14 +648,58 @@ function get_initials($name) {
       <?php if (!$is_logged_in): ?>
           <a href="register.php" class="btn-dark">Create Free Account</a>
       <?php endif; ?>
-      <a href="create_listing.php" class="btn-amber-big" style="background: var(--chalk); color: var(--indigo);">Post a Listing</a>
+      <!-- DIRECT LINK TO SELL -->
+      <a href="create_listing.php" class="btn-outline-dark" style="border-color: var(--indigo); color: var(--indigo);">Post a Listing</a>
     </div>
   </div>
 </section>
 
+<!-- FOOTER -->
 <footer>
-  <div class="footer-brand-logo">MILELE</div>
-  <p>© 2026 MILELE. Built securely for Kenyan students.</p>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <div class="footer-brand-logo">MILELE</div>
+      <p>The student marketplace built for campus life in Kenya. Buy and sell safely within your university community.</p>
+      <div class="footer-social">
+        <div class="social-btn">𝕏</div>
+        <div class="social-btn">in</div>
+        <div class="social-btn">ig</div>
+        <div class="social-btn">yt</div>
+      </div>
+    </div>
+    <div class="footer-col">
+      <h4>Browse</h4>
+      <ul>
+        <li><a href="#browse">All Listings</a></li>
+        <li><a href="index.php?category=Textbooks">Textbooks</a></li>
+        <li><a href="index.php?category=Electronics">Electronics</a></li>
+        <li><a href="index.php?category=Furniture">Furniture</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Sell</h4>
+      <ul>
+        <!-- DIRECT LINK TO SELL -->
+        <li><a href="create_listing.php">Post a Listing</a></li>
+        <li><a href="profile.php">Seller Dashboard</a></li>
+        <li><a href="#how">Pricing Tips</a></li>
+      </ul>
+    </div>
+    <div class="footer-col">
+      <h4>Company</h4>
+      <ul>
+        <li><a href="#">About Us</a></li>
+        <li><a href="#">Universities</a></li>
+        <li><a href="#">Safety Policy</a></li>
+        <li><a href="#">Contact</a></li>
+        <li><a href="#">Terms</a></li>
+      </ul>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 MILELE. Made with ❤️ for Kenyan students.</span>
+    <span><a href="#">Privacy Policy</a> · <a href="#">Terms of Service</a></span>
+  </div>
 </footer>
 
 <script>
@@ -415,6 +708,27 @@ function get_initials($name) {
     entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
   }, { threshold: 0.08 });
   document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  // Semester Sale Countdown Timer
+  (function countdown() {
+    const end = new Date();
+    end.setDate(end.getDate() + 14);
+    end.setHours(end.getHours() + 8, end.getMinutes() + 42, 17, 0);
+    function tick() {
+      const diff = end - new Date();
+      if (diff <= 0) return;
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      document.getElementById('cd-days').textContent = String(d).padStart(2,'0');
+      document.getElementById('cd-hrs').textContent = String(h).padStart(2,'0');
+      document.getElementById('cd-min').textContent = String(m).padStart(2,'0');
+      document.getElementById('cd-sec').textContent = String(s).padStart(2,'0');
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
 </script>
 </body>
 </html>
