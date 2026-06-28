@@ -411,7 +411,6 @@ function get_initials($name) {
   <div class="trust-item"><span class="trust-icon">🔒</span> Safe campus meetups</div>
   <div class="trust-item"><span class="trust-icon">💬</span> In-app messaging</div>
   <div class="trust-item"><span class="trust-icon">⭐</span> Seller ratings system</div>
-  <div class="trust-item"><span class="trust-icon">🚫</span> Zero platform fees</div>
 </div>
 
 <!-- SEARCH & FILTERS -->
