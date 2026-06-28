@@ -147,8 +147,8 @@ function get_initials($name) {
         .brand { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--indigo); text-decoration: none; display: flex; align-items: center; gap: 8px;}
         .logo-dot { width: 10px; height: 10px; background: var(--amber); border-radius: 50%; display: inline-block; }
         .nav-actions { display: flex; gap: 12px; align-items: center;}
-        .btn-glass { padding: 9px 20px; background: transparent; color: var(--indigo); text-decoration: none; border: 1.5px solid var(--indigo); border-radius: 50px; font-weight: 700; font-size: 13px; transition: 0.2s;}
-        .btn-glass:hover { background: var(--indigo); color: var(--white); }
+        .btn-ghost { padding: 9px 20px; background: transparent; color: var(--indigo); text-decoration: none; border: 1.5px solid var(--indigo); border-radius: 50px; font-weight: 700; font-size: 13px; transition: 0.2s;}
+        .btn-ghost:hover { background: var(--indigo); color: var(--white); }
 
         .inbox-container { display: flex; flex-grow: 1; overflow: hidden; }
         
